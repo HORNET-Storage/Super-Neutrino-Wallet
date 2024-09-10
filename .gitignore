@@ -1,0 +1,59 @@
+# Ignore Go build outputs
+/bin/
+/pkg/
+/out/
+
+# Ignore Go test binaries
+*.test
+
+# Ignore the .env file with sensitive environment variables
+.env
+*.env
+
+# Ignore database files
+*.db
+
+# Ignore JSON files (commonly used for config or data storage)
+*.json
+*.txt
+
+# Ignore logs
+*.log
+
+# Ignore any specific sensitive files or directories
+wallet.db
+*.key
+*.pem
+*.cert
+*.crt
+
+# Ignore Go module files
+vendor/
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
+
+# Ignore editor-specific files
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Ignore any other temporary files or directories
+temp/
+tmp/
+*.tmp
+
+# Ignore binaries
+*.exe
+*.out
+*.bin
+
+# wallet env directory
+wallets/
+jwtkeys/
+neutrino_db/
+Nestr-wallet
