@@ -116,7 +116,6 @@ Replace `"your_public_key_here"` with your actual public key.
 - The wallet uses BIP39 for seed phrase generation
 - Sensitive data (seed phrases, private keys) are encrypted before storage
 - JWT is used for API authentication
-- The wallet supports optional Tor integration for enhanced privacy
 
 Always ensure you're running the latest version of the wallet and keep your system updated.
 
