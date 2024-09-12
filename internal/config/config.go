@@ -73,6 +73,7 @@ func setDefaults() {
 	viper.SetDefault("backup_path", "./wallet_backup")
 	viper.SetDefault("wallet_dir", "./wallets")
 	viper.SetDefault("jwt_keys_dir", "./jwtkeys")
+	viper.SetDefault("server_mode", true)
 
 	// Example peers for both environments
 	viper.SetDefault("add_peers", []string{
@@ -97,7 +98,6 @@ func setDefaults() {
 		"seed.bitcoin-seeders.net:8333",
 		"btcd-mainnet.lightning.computer:8333",
 		"neutrino.bitcoin.kndx.dev:8333",
-		"rn5jn54abhf6s56yip7o5xx5rdjlqcjn2ip6txmxeqj2zke6zfs4ckid.onion:8333",
 	})
 }
 
