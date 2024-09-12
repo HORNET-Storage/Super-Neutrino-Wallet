@@ -2,6 +2,9 @@ package wallet
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -106,30 +109,12 @@ func FormatTransactions(w *wallet.Wallet, serverwWalletName string) ([]map[strin
 }
 
 func SendTransactionsToBackend(transactions []map[string]interface{}) error {
-
-	backendURL := viper.GetString("relay_backend_url")
-	if backendURL == "" {
-		log.Println("Using default value, not config.json values.")
-		backendURL = "http://localhost:9002" // Default value
-	}
-
 	jsonData, err := json.Marshal(transactions)
 	if err != nil {
 		return fmt.Errorf("error marshaling transactions: %v", err)
 	}
 
-	resp, err := http.Post(backendURL+"/transactions", "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("error sending transactions to backend: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("backend returned non-OK status: %v", resp.Status)
-	}
-
-	log.Println("Transactions sent successfully to backend")
-	return nil
+	return sendToBackend("/api/wallet/transactions", jsonData)
 }
 
 func FetchAndSendWalletBalance(w *wallet.Wallet, walletName string) error {
@@ -157,19 +142,7 @@ func FetchAndSendWalletBalance(w *wallet.Wallet, walletName string) error {
 		return fmt.Errorf("error marshaling balance data: %v", err)
 	}
 
-	// Send POST request to backend
-	resp, err := http.Post(backendURL+"/balance", "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("error sending balance to backend: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("backend returned non-OK status: %v", resp.Status)
-	}
-
-	log.Println("Wallet balance sent successfully to backend")
-	return nil
+	return sendToBackend("/api/wallet/balance", jsonData)
 }
 
 func SendReceiveAddressesToBackend(walletName string) error {
@@ -183,17 +156,10 @@ func SendReceiveAddressesToBackend(walletName string) error {
 	var addresses []map[string]string
 	for i, addr := range receiveAddresses {
 		addresses = append(addresses, map[string]string{
-			"index":       fmt.Sprintf("%d", i), // Index of the address
+			"index":       fmt.Sprintf("%d", i),
 			"address":     addr.EncodeAddress(),
-			"wallet_name": walletName, // Include the wallet name
+			"wallet_name": walletName,
 		})
-	}
-
-	// Send the addresses to the backend
-	backendURL := viper.GetString("relay_backend_url")
-	if backendURL == "" {
-		log.Println("Using default value, not config.json values.")
-		backendURL = "http://localhost:9002" // Default value
 	}
 
 	jsonData, err := json.Marshal(addresses)
@@ -201,9 +167,35 @@ func SendReceiveAddressesToBackend(walletName string) error {
 		return fmt.Errorf("error marshaling addresses: %v", err)
 	}
 
-	resp, err := http.Post(backendURL+"/addresses", "application/json", bytes.NewBuffer(jsonData))
+	// Use the sendToBackend function we created earlier
+	return sendToBackend("/api/wallet/addresses", jsonData)
+}
+
+func sendToBackend(endpoint string, data []byte) error {
+	backendURL := viper.GetString("relay_backend_url")
+	if backendURL == "" {
+		log.Println("Using default value, not config.json values.")
+		backendURL = "http://localhost:9002" // Default value
+	}
+
+	apiKey := viper.GetString("api_key")
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+	signature := generateSignature(apiKey, timestamp, data)
+
+	req, err := http.NewRequest("POST", backendURL+endpoint, bytes.NewBuffer(data))
 	if err != nil {
-		return fmt.Errorf("error sending addresses to backend: %v", err)
+		return fmt.Errorf("error creating request: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", apiKey)
+	req.Header.Set("X-Timestamp", timestamp)
+	req.Header.Set("X-Signature", signature)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("error sending request to backend: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -211,6 +203,13 @@ func SendReceiveAddressesToBackend(walletName string) error {
 		return fmt.Errorf("backend returned non-OK status: %v", resp.Status)
 	}
 
-	log.Println("Receive addresses sent successfully to backend")
+	log.Println("Data sent successfully to backend")
 	return nil
+}
+
+func generateSignature(apiKey, timestamp string, data []byte) string {
+	message := apiKey + timestamp + string(data)
+	h := hmac.New(sha256.New, []byte(apiKey))
+	h.Write([]byte(message))
+	return hex.EncodeToString(h.Sum(nil))
 }
