@@ -73,6 +73,7 @@ func setDefaults() {
 	viper.SetDefault("backup_path", "./wallet_backup")
 	viper.SetDefault("wallet_dir", "./wallets")
 	viper.SetDefault("jwt_keys_dir", "./jwtkeys")
+	viper.SetDefault("wallet_api_key", "")
 	viper.SetDefault("server_mode", true)
 
 	// Example peers for both environments

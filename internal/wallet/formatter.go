@@ -178,7 +178,7 @@ func sendToBackend(endpoint string, data []byte) error {
 		backendURL = "http://localhost:9002" // Default value
 	}
 
-	apiKey := viper.GetString("api_key")
+	apiKey := viper.GetString("wallet_api_key")
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 	signature := generateSignature(apiKey, timestamp, data)
 
