@@ -1,6 +1,7 @@
 package transaction
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,12 +10,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcwallet/waddrmgr"
 	"github.com/btcsuite/btcwallet/wallet"
 	"github.com/btcsuite/btcwallet/walletdb"
+	"golang.org/x/exp/rand"
 )
 
 // Verify the signature of a transaction input
@@ -43,6 +46,66 @@ func isSegWitAddress(addr btcutil.Address) bool {
 	default:
 		return false
 	}
+}
+
+func createSignature(w *wallet.Wallet, tx *wire.MsgTx, inputIndex int, utxo *btcjson.ListUnspentResult, pkScript []byte) ([]byte, wire.TxWitness, error) {
+	inputAmount := int64(utxo.Amount * btcutil.SatoshiPerBitcoin)
+
+	// Decode the address from the UTXO
+	addr, err := btcutil.DecodeAddress(utxo.Address, w.ChainParams())
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to decode address: %v", err)
+	}
+
+	// Get the private key for the address
+	privKey, err := w.PrivKeyForAddress(addr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get private key: %v", err)
+	}
+
+	// Create the previous output fetcher
+	prevOutputFetcher := txscript.NewCannedPrevOutputFetcher(pkScript, inputAmount)
+
+	// Check if it's a SegWit address
+	if isSegWitAddress(addr) {
+		witness, err := txscript.WitnessSignature(tx, txscript.NewTxSigHashes(tx, prevOutputFetcher), inputIndex, inputAmount, pkScript, txscript.SigHashAll, privKey, true)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create witness signature: %v", err)
+		}
+		return nil, witness, nil
+	} else {
+		sigScript, err := txscript.SignatureScript(tx, inputIndex, pkScript, txscript.SigHashAll, privKey, true)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create signature script: %v", err)
+		}
+		return sigScript, nil, nil
+	}
+}
+
+func validateTransaction(tx *wire.MsgTx, utxos []*btcjson.ListUnspentResult) error {
+	if len(tx.TxIn) != len(utxos) {
+		return fmt.Errorf("mismatch between transaction inputs (%d) and provided UTXOs (%d)", len(tx.TxIn), len(utxos))
+	}
+
+	for i, utxo := range utxos {
+		// Decode the scriptPubKey
+		scriptPubKey, err := hex.DecodeString(utxo.ScriptPubKey)
+		if err != nil {
+			return fmt.Errorf("failed to decode scriptPubKey for input %d: %v", i, err)
+		}
+
+		inputAmount := int64(utxo.Amount * btcutil.SatoshiPerBitcoin)
+
+		// Verify the signature
+		valid, err := verifySignature(tx, i, scriptPubKey, inputAmount)
+		if err != nil {
+			return fmt.Errorf("failed to verify signature for input %d: %v", i, err)
+		}
+		if !valid {
+			return fmt.Errorf("invalid signature for input %d", i)
+		}
+	}
+	return nil
 }
 
 func UpdateUTXOs(w *wallet.Wallet) error {
@@ -137,7 +200,6 @@ func getUserFeePriority(feeRec FeeRecommendation) (int, error) {
 }
 
 func findUnusedChangeAddress(w *wallet.Wallet) (btcutil.Address, error) {
-	var changeAddr btcutil.Address
 	var maxAddressesToCheck uint32
 
 	err := walletdb.View(w.Database(), func(tx walletdb.ReadTx) error {
@@ -145,17 +207,14 @@ func findUnusedChangeAddress(w *wallet.Wallet) (btcutil.Address, error) {
 		if err != nil {
 			return fmt.Errorf("failed to fetch scoped key manager: %v", err)
 		}
-
 		addrmgrNs := tx.ReadBucket([]byte("waddrmgr"))
 		props, err := scopedMgr.AccountProperties(addrmgrNs, 0)
 		if err != nil {
 			return fmt.Errorf("failed to get account properties: %v", err)
 		}
-
 		maxAddressesToCheck = props.InternalKeyCount
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -170,13 +229,15 @@ func findUnusedChangeAddress(w *wallet.Wallet) (btcutil.Address, error) {
 		usedAddresses[tx.Address] = true
 	}
 
+	var unusedAddresses []btcutil.Address
+
 	for i := uint32(0); i < maxAddressesToCheck; i++ {
+		var addr btcutil.Address
 		err = walletdb.View(w.Database(), func(tx walletdb.ReadTx) error {
 			scopedMgr, err := w.Manager.FetchScopedKeyManager(waddrmgr.KeyScopeBIP0084)
 			if err != nil {
 				return fmt.Errorf("failed to fetch scoped key manager: %v", err)
 			}
-
 			addrmgrNs := tx.ReadBucket([]byte("waddrmgr"))
 			maddr, err := scopedMgr.DeriveFromKeyPath(addrmgrNs, waddrmgr.DerivationPath{
 				Account: 0,
@@ -186,23 +247,24 @@ func findUnusedChangeAddress(w *wallet.Wallet) (btcutil.Address, error) {
 			if err != nil {
 				return fmt.Errorf("failed to derive address: %v", err)
 			}
-
-			addr := maddr.Address()
-			if !usedAddresses[addr.String()] {
-				changeAddr = addr
-				return nil
-			}
+			addr = maddr.Address()
 			return nil
 		})
-
 		if err != nil {
 			return nil, err
 		}
 
-		if changeAddr != nil {
-			log.Printf("Using existing unused change address: %s", changeAddr.String())
-			return changeAddr, nil
+		if !usedAddresses[addr.String()] {
+			unusedAddresses = append(unusedAddresses, addr)
 		}
+	}
+
+	if len(unusedAddresses) > 0 {
+		// Choose a random unused address
+		randIndex := rand.Intn(len(unusedAddresses))
+		changeAddr := unusedAddresses[randIndex]
+		log.Printf("Using existing unused change address: %s", changeAddr.String())
+		return changeAddr, nil
 	}
 
 	// If no unused address found, create a new one

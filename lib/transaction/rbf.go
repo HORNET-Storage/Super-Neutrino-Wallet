@@ -66,14 +66,13 @@ func ReplaceTransactionWithHigherFee(w *wallet.Wallet, service *neutrino.ChainSe
 	// Create new transaction
 	newTx := wire.NewMsgTx(wire.TxVersion)
 
-	// Copy inputs from the original transaction
+	// Copy inputs and calculate total input amount
 	var totalIn int64
 	for _, txIn := range originalTx.TxIn {
 		newTxIn := wire.NewTxIn(&txIn.PreviousOutPoint, nil, nil)
 		newTxIn.Sequence = RBFSequenceNumber // Enable RBF
 		newTx.AddTxIn(newTxIn)
 
-		// Fetch UTXO details
 		utxo, err := fetchUTXO(w, &txIn.PreviousOutPoint)
 		if err != nil {
 			return chainhash.Hash{}, false, fmt.Errorf("failed to get UTXO for input: %v", err)
@@ -81,9 +80,13 @@ func ReplaceTransactionWithHigherFee(w *wallet.Wallet, service *neutrino.ChainSe
 		totalIn += int64(utxo.Amount * btcutil.SatoshiPerBitcoin)
 	}
 
-	// Copy outputs from the original transaction
+	// Copy outputs (excluding change output) and calculate total output amount
 	var totalOut int64
-	for _, txOut := range originalTx.TxOut {
+	for i, txOut := range originalTx.TxOut {
+		if i == len(originalTx.TxOut)-1 {
+			// Assume the last output is change, skip it for now
+			continue
+		}
 		newTx.AddTxOut(txOut)
 		totalOut += txOut.Value
 	}
@@ -92,22 +95,11 @@ func ReplaceTransactionWithHigherFee(w *wallet.Wallet, service *neutrino.ChainSe
 	txSize := newTx.SerializeSize()
 	newFee := btcutil.Amount(txSize * int(newFeeRate))
 	oldFee := btcutil.Amount(totalIn - totalOut)
-	extraFee := newFee - oldFee
 
-	if extraFee <= 0 {
-		return chainhash.Hash{}, false, fmt.Errorf("new fee is not higher than the original fee")
-	}
-
-	// Check if the change output can cover the extra fee
-	lastOutputIndex := len(newTx.TxOut) - 1
-	changeOutput := newTx.TxOut[lastOutputIndex]
-	if btcutil.Amount(changeOutput.Value) < extraFee {
-		log.Printf("Change output insufficient to cover new fee. Selecting additional UTXOs.")
-
-		// Calculate how much more we need
-		additionalFundsNeeded := extraFee - btcutil.Amount(changeOutput.Value)
-
-		// Select additional UTXOs
+	// Check if we need additional funds
+	additionalFundsNeeded := newFee - oldFee
+	if additionalFundsNeeded > 0 {
+		log.Printf("Additional funds needed: %d satoshis", additionalFundsNeeded)
 		additionalUTXOs, additionalAmount, err := selectAdditionalUTXOs(w, additionalFundsNeeded)
 		if err != nil {
 			return chainhash.Hash{}, false, fmt.Errorf("failed to select additional UTXOs: %v", err)
@@ -125,34 +117,24 @@ func ReplaceTransactionWithHigherFee(w *wallet.Wallet, service *neutrino.ChainSe
 			newTx.AddTxIn(txIn)
 		}
 
-		// Adjust the total input amount
 		totalIn += int64(additionalAmount)
+	}
 
-		// Recalculate fee based on new transaction size
-		txSize = newTx.SerializeSize()
-		newFee = btcutil.Amount(txSize * int(newFeeRate))
-		extraFee = newFee - oldFee
+	// Calculate change
+	changeAmount := btcutil.Amount(totalIn) - btcutil.Amount(totalOut) - newFee
 
-		// Create a new change output
+	// Add change output if it's not dust
+	dustThreshold := btcutil.Amount(546) // Typical dust threshold
+	if changeAmount > dustThreshold {
 		changeAddr, err := getChangeAddress(w)
 		if err != nil {
-			return chainhash.Hash{}, false, fmt.Errorf("failed to generate new change address: %v", err)
+			return chainhash.Hash{}, false, fmt.Errorf("failed to get change address: %v", err)
 		}
 		changePkScript, err := txscript.PayToAddrScript(changeAddr)
 		if err != nil {
 			return chainhash.Hash{}, false, fmt.Errorf("failed to create change script: %v", err)
 		}
-
-		newChangeAmount := btcutil.Amount(totalIn) - btcutil.Amount(totalOut) - newFee
-		if newChangeAmount > 0 {
-			newTx.TxOut[lastOutputIndex] = wire.NewTxOut(int64(newChangeAmount), changePkScript)
-		} else {
-			// If there's no change, remove the change output
-			newTx.TxOut = newTx.TxOut[:lastOutputIndex]
-		}
-	} else {
-		// Adjust the last output (change) to accommodate the new fee
-		newTx.TxOut[lastOutputIndex].Value -= int64(extraFee)
+		newTx.AddTxOut(wire.NewTxOut(int64(changeAmount), changePkScript))
 	}
 
 	// Check transaction weight
@@ -162,97 +144,52 @@ func ReplaceTransactionWithHigherFee(w *wallet.Wallet, service *neutrino.ChainSe
 	}
 
 	// Sign the transaction
+	var utxos []*btcjson.ListUnspentResult
 	for i, txIn := range newTx.TxIn {
 		utxo, err := fetchUTXO(w, &txIn.PreviousOutPoint)
 		if err != nil {
 			return chainhash.Hash{}, false, fmt.Errorf("failed to get UTXO for input %d: %v", i, err)
 		}
+		utxos = append(utxos, utxo)
 
 		scriptPubKey, err := hex.DecodeString(utxo.ScriptPubKey)
 		if err != nil {
 			return chainhash.Hash{}, false, fmt.Errorf("failed to decode scriptPubKey for input %d: %v", i, err)
 		}
 
-		inputAmount := int64(utxo.Amount * btcutil.SatoshiPerBitcoin)
-
-		_, addrs, _, err := txscript.ExtractPkScriptAddrs(scriptPubKey, w.ChainParams())
+		sigScript, witness, err := createSignature(w, newTx, i, utxo, scriptPubKey)
 		if err != nil {
-			return chainhash.Hash{}, false, fmt.Errorf("failed to extract address for input %d: %v", i, err)
+			return chainhash.Hash{}, false, fmt.Errorf("failed to create signature for input %d: %v", i, err)
 		}
+		txIn.SignatureScript = sigScript
+		txIn.Witness = witness
+	}
 
-		if len(addrs) == 0 {
-			return chainhash.Hash{}, false, fmt.Errorf("no addresses found for input %d", i)
-		}
-
-		log.Printf("Processing input %d: Address: %s, Amount: %d", i, addrs[0].String(), inputAmount)
-
-		privKey, err := w.PrivKeyForAddress(addrs[0])
-		if err != nil {
-			return chainhash.Hash{}, false, fmt.Errorf("failed to get private key for input %d: %v", i, err)
-		}
-
-		prevOutputFetcher := txscript.NewCannedPrevOutputFetcher(scriptPubKey, inputAmount)
-
-		if txscript.IsPayToWitnessPubKeyHash(scriptPubKey) {
-			log.Printf("Input %d is SegWit", i)
-			witnessScript, err := txscript.WitnessSignature(newTx, txscript.NewTxSigHashes(newTx, prevOutputFetcher), i, inputAmount, scriptPubKey, txscript.SigHashAll, privKey, true)
-			if err != nil {
-				return chainhash.Hash{}, false, fmt.Errorf("failed to create witness script for input %d: %v", i, err)
-			}
-			newTx.TxIn[i].Witness = witnessScript
-			log.Printf("Witness script created for input %d", i)
-		} else {
-			log.Printf("Input %d is non-SegWit", i)
-			sigScript, err := txscript.SignatureScript(newTx, i, scriptPubKey, txscript.SigHashAll, privKey, true)
-			if err != nil {
-				return chainhash.Hash{}, false, fmt.Errorf("failed to create signature script for input %d: %v", i, err)
-			}
-			newTx.TxIn[i].SignatureScript = sigScript
-			log.Printf("Signature script created for input %d", i)
-		}
-
-		// Verify the signature
-		valid, err := verifySignature(newTx, i, scriptPubKey, inputAmount)
-		if err != nil {
-			log.Printf("Signature verification failed for input %d: %v", i, err)
-			return chainhash.Hash{}, false, fmt.Errorf("failed to verify signature for input %d: %v", i, err)
-		}
-		if !valid {
-			log.Printf("Invalid signature for input %d", i)
-			return chainhash.Hash{}, false, fmt.Errorf("signature verification failed for input %d", i)
-		}
-		log.Printf("Signature verification succeeded for input %d", i)
+	// Verify the transaction
+	err = validateTransaction(newTx, utxos)
+	if err != nil {
+		return chainhash.Hash{}, false, fmt.Errorf("transaction validation failed: %v", err)
 	}
 
 	log.Printf("RBF Transaction created successfully. Details:")
 	log.Printf("  TxID: %s", newTx.TxHash().String())
 	log.Printf("  New fee: %d satoshis", newFee)
-	log.Printf("  Extra fee: %d satoshis", extraFee)
+	log.Printf("  Extra fee: %d satoshis", additionalFundsNeeded)
 	log.Printf("  Transaction size: %d vBytes", newTx.SerializeSize())
 	log.Printf("  Transaction weight: %d weight units", txWeight)
 	log.Printf("  Number of inputs: %d", len(newTx.TxIn))
 	log.Printf("  Number of outputs: %d", len(newTx.TxOut))
 
-	// Save the transaction in the database
-	_, err = walletstatedb.SaveTransactionToDB(newTx)
-	if err != nil {
-		return chainhash.Hash{}, false, err
-	}
-
-	// Create Electrum client once
-	electrumClient, err = CreateElectrumClient(ElectrumConfig{
-		ServerAddr: "electrum.blockstream.info:50002",
-		UseSSL:     true,
-	})
-	if err != nil {
-		return chainhash.Hash{}, false, fmt.Errorf("failed to create Electrum client: %v", err)
-	}
-	defer electrumClient.Shutdown()
-
 	// Broadcast and verify the transaction
 	txHash, verified, err := broadcastAndVerifyTransaction(newTx, service)
 	if err != nil {
 		return chainhash.Hash{}, false, fmt.Errorf("failed to broadcast and verify RBF transaction: %v", err)
+	}
+
+	// Save the transaction in the database
+	_, err = walletstatedb.SaveTransactionToDB(newTx)
+	if err != nil {
+		return chainhash.Hash{}, false, err
 	}
 
 	log.Printf("RBF transaction successfully broadcast. New TxID: %s", txHash.String())
