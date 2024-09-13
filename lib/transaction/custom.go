@@ -1,7 +1,6 @@
 package transaction
 
 import (
-	"encoding/hex"
 	"fmt"
 	"log"
 
@@ -72,55 +71,38 @@ func CreateTransactionWithHash(w *wallet.Wallet, service *neutrino.ChainService,
 	}
 	log.Printf("Found %d unspent outputs.", len(utxos))
 
-	// Select suitable UTXO
-	var selectedUTXO *btcjson.ListUnspentResult
+	// Select all UTXOs
+	var selectedUTXOs []*btcjson.ListUnspentResult
+	var totalSelected btcutil.Amount
 	for _, utxo := range utxos {
-		log.Printf("Checking UTXO: %s:%d", utxo.TxID, utxo.Vout)
-
-		err := VerifyUTXO(utxo.TxID, utxo.Vout)
-		if err != nil {
-			log.Printf("UTXO %s:%d is invalid: %v", utxo.TxID, utxo.Vout, err)
-			continue
-		}
-
-		if btcutil.Amount(utxo.Amount*btcutil.SatoshiPerBitcoin) >= amountToSend+btcutil.Amount(feeRate) {
-			selectedUTXO = utxo
-			break
-		}
+		selectedUTXOs = append(selectedUTXOs, utxo)
+		totalSelected += btcutil.Amount(utxo.Amount * btcutil.SatoshiPerBitcoin)
 	}
-
-	if selectedUTXO == nil {
-		log.Printf("No suitable UTXO found.")
-		return chainhash.Hash{}, false, fmt.Errorf("no suitable UTXO found")
-	}
-	log.Printf("Selected UTXO: %s:%d", selectedUTXO.TxID, selectedUTXO.Vout)
 
 	// Create new transaction
 	tx := wire.NewMsgTx(wire.TxVersion)
-	prevOutHash, err := chainhash.NewHashFromStr(selectedUTXO.TxID)
-	if err != nil {
-		log.Printf("Failed to parse txid: %v", err)
-		return chainhash.Hash{}, false, fmt.Errorf("failed to parse txid: %v", err)
-	}
-	prevOut := wire.NewOutPoint(prevOutHash, selectedUTXO.Vout)
-	txIn := wire.NewTxIn(prevOut, nil, nil)
 
-	if enableRBF {
-		txIn.Sequence = RBFSequenceNumber
-		log.Printf("RBF enabled for this transaction (sequence number: %d)", RBFSequenceNumber)
+	// Add inputs
+	for _, utxo := range selectedUTXOs {
+		prevOutHash, err := chainhash.NewHashFromStr(utxo.TxID)
+		if err != nil {
+			return chainhash.Hash{}, false, fmt.Errorf("failed to parse txid: %v", err)
+		}
+		prevOut := wire.NewOutPoint(prevOutHash, utxo.Vout)
+		txIn := wire.NewTxIn(prevOut, nil, nil)
+		if enableRBF {
+			txIn.Sequence = RBFSequenceNumber
+		}
+		tx.AddTxIn(txIn)
 	}
-
-	tx.AddTxIn(txIn)
 
 	// Add recipient output
 	recipientAddr, err := btcutil.DecodeAddress(recipientAddress, w.ChainParams())
 	if err != nil {
-		log.Printf("Failed to decode recipient address: %v", err)
 		return chainhash.Hash{}, false, fmt.Errorf("failed to decode recipient address: %v", err)
 	}
 	pkScript, err := txscript.PayToAddrScript(recipientAddr)
 	if err != nil {
-		log.Printf("Failed to create output script: %v", err)
 		return chainhash.Hash{}, false, fmt.Errorf("failed to create output script: %v", err)
 	}
 	tx.AddTxOut(wire.NewTxOut(int64(amountToSend), pkScript))
@@ -128,88 +110,80 @@ func CreateTransactionWithHash(w *wallet.Wallet, service *neutrino.ChainService,
 	// Add OP_RETURN output with file hash
 	opReturnScript, err := txscript.NullDataScript([]byte(fileHash))
 	if err != nil {
-		log.Printf("Failed to create OP_RETURN script: %v", err)
 		return chainhash.Hash{}, false, fmt.Errorf("failed to create OP_RETURN script: %v", err)
 	}
 	tx.AddTxOut(wire.NewTxOut(0, opReturnScript))
 
-	// Calculate transaction size
+	// Calculate transaction size and required fee
 	txSize := tx.SerializeSize()
+	requiredFee := btcutil.Amount(txSize * feeRate)
 
-	// Calculate the required fee
-	requiredFee := btcutil.Amount(txSize * int(feeRate))
+	// Calculate change
+	changeAmount := totalSelected - amountToSend - requiredFee
 
-	// Calculate input and change amounts
-	inputAmount := btcutil.Amount(selectedUTXO.Amount * btcutil.SatoshiPerBitcoin)
-	changeAmount := inputAmount - amountToSend - requiredFee
-	if changeAmount > 0 {
-		changeAddr, err := getChangeAddress(w)
-		if err != nil {
-			log.Printf("Failed to get change address: %v", err)
-			return chainhash.Hash{}, false, fmt.Errorf("failed to get change address: %v", err)
-		}
-		changePkScript, err := txscript.PayToAddrScript(changeAddr)
-		if err != nil {
-			log.Printf("Failed to create change script: %v", err)
-			return chainhash.Hash{}, false, fmt.Errorf("failed to create change script: %v", err)
-		}
-		tx.AddTxOut(wire.NewTxOut(int64(changeAmount), changePkScript))
+	// Always add a change output
+	changeAddr, err := getChangeAddress(w)
+	if err != nil {
+		return chainhash.Hash{}, false, fmt.Errorf("failed to get change address: %v", err)
 	}
+	changePkScript, err := txscript.PayToAddrScript(changeAddr)
+	if err != nil {
+		return chainhash.Hash{}, false, fmt.Errorf("failed to create change script: %v", err)
+	}
+	tx.AddTxOut(wire.NewTxOut(int64(changeAmount), changePkScript))
+
+	// Recalculate the fee with the change output
+	txSize = tx.SerializeSize()
+	requiredFee = btcutil.Amount(txSize * feeRate)
+	changeAmount = totalSelected - amountToSend - requiredFee
+	tx.TxOut[len(tx.TxOut)-1].Value = int64(changeAmount)
 
 	// Sign the transaction
-	utxoAddr, err := btcutil.DecodeAddress(selectedUTXO.Address, w.ChainParams())
-	if err != nil {
-		log.Printf("Failed to decode UTXO address: %v", err)
-		return chainhash.Hash{}, false, fmt.Errorf("failed to decode UTXO address: %v", err)
-	}
-	privKey, err := w.PrivKeyForAddress(utxoAddr)
-	if err != nil {
-		log.Printf("Failed to get private key: %v", err)
-		return chainhash.Hash{}, false, fmt.Errorf("failed to get private key: %v", err)
-	}
-	scriptPubKey, err := hex.DecodeString(selectedUTXO.ScriptPubKey)
-	if err != nil {
-		log.Printf("Failed to decode scriptPubKey: %v", err)
-		return chainhash.Hash{}, false, fmt.Errorf("failed to decode scriptPubKey: %v", err)
-	}
-
-	prevOutputs := txscript.NewCannedPrevOutputFetcher(scriptPubKey, int64(inputAmount))
-
-	if isSegWitAddress(utxoAddr) {
-		// Create the witness script for SegWit inputs
-		witnessScript, err := txscript.WitnessSignature(tx, txscript.NewTxSigHashes(tx, prevOutputs), 0, int64(inputAmount), scriptPubKey, txscript.SigHashAll, privKey, true)
+	for i, txIn := range tx.TxIn {
+		utxo := selectedUTXOs[i]
+		sigScript, witness, err := createSignature(w, tx, i, utxo, pkScript)
 		if err != nil {
-			log.Printf("Failed to create witness script: %v", err)
-			return chainhash.Hash{}, false, fmt.Errorf("failed to create witness script: %v", err)
+			return chainhash.Hash{}, false, fmt.Errorf("failed to create signature: %v", err)
 		}
-		tx.TxIn[0].Witness = witnessScript
-	} else {
-		// Create the signature script for non-SegWit inputs
-		sigScript, err := txscript.SignatureScript(tx, 0, scriptPubKey, txscript.SigHashAll, privKey, true)
-		if err != nil {
-			log.Printf("Failed to create signature script: %v", err)
-			return chainhash.Hash{}, false, fmt.Errorf("failed to create signature script: %v", err)
-		}
-		tx.TxIn[0].SignatureScript = sigScript
+		txIn.SignatureScript = sigScript
+		txIn.Witness = witness
 	}
 
-	// Verify the signature
-	valid, err := verifySignature(tx, 0, scriptPubKey, int64(inputAmount))
+	// Verify the transaction
+	err = validateTransaction(tx, selectedUTXOs)
 	if err != nil {
-		log.Printf("Failed to verify signature: %v", err)
-		return chainhash.Hash{}, false, fmt.Errorf("failed to verify signature: %v", err)
+		return chainhash.Hash{}, false, fmt.Errorf("transaction validation failed: %v", err)
 	}
-	if !valid {
-		log.Printf("Signature verification failed")
-		return chainhash.Hash{}, false, fmt.Errorf("signature verification failed")
-	}
-	log.Printf("Signature verification succeeded")
 
+	// Log transaction details
+	logTransactionDetails(tx, amountToSend, requiredFee, totalSelected, changeAmount, fileHash)
+
+	// Save the transaction in the database
+	_, err = walletstatedb.SaveTransactionToDB(tx)
+	if err != nil {
+		return chainhash.Hash{}, false, err
+	}
+
+	txHash, verified, err := broadcastAndVerifyTransaction(tx, service)
+	if err != nil {
+		// Release the output we tried to spend
+		releaseErr := w.ReleaseOutput(wtxmgr.LockID(tx.TxHash()), tx.TxIn[0].PreviousOutPoint)
+		if releaseErr != nil {
+			log.Printf("Failed to release output: %v", releaseErr)
+		}
+		return chainhash.Hash{}, false, fmt.Errorf("failed to broadcast and verify transaction: %v", err)
+	}
+
+	log.Println("Transaction broadcast and verified successfully.")
+	return txHash, verified, nil
+}
+
+func logTransactionDetails(tx *wire.MsgTx, amountToSend, requiredFee, totalSelected, changeAmount btcutil.Amount, fileHash string) {
 	log.Printf("Transaction created successfully. Details:")
 	log.Printf("  TxID: %s", tx.TxHash().String())
 	log.Printf("  Amount to send: %d satoshis", amountToSend)
 	log.Printf("  Fee: %d satoshis", requiredFee)
-	log.Printf("  Total input: %d satoshis", inputAmount)
+	log.Printf("  Total input: %d satoshis", totalSelected)
 	log.Printf("  Change amount: %d satoshis", changeAmount)
 	log.Printf("  Transaction size: %d vBytes", tx.SerializeSize())
 	log.Printf("  Number of inputs: %d", len(tx.TxIn))
@@ -238,32 +212,4 @@ func CreateTransactionWithHash(w *wallet.Wallet, service *neutrino.ChainService,
 		log.Printf("    Value: %d satoshis", output.Value)
 		log.Printf("    PkScript: %x", output.PkScript)
 	}
-
-	// Save the transaction in the database
-	_, err = walletstatedb.SaveTransactionToDB(tx)
-	if err != nil {
-		return chainhash.Hash{}, false, err
-	}
-	// Create Electrum client once
-	electrumClient, err := CreateElectrumClient(ElectrumConfig{
-		ServerAddr: "electrum.blockstream.info:50002",
-		UseSSL:     true,
-	})
-	if err != nil {
-		return chainhash.Hash{}, false, fmt.Errorf("failed to create Electrum client: %v", err)
-	}
-	defer electrumClient.Shutdown()
-
-	txHash, verified, err := broadcastAndVerifyTransaction(tx, service)
-	if err != nil {
-		// Release the output we tried to spend
-		releaseErr := w.ReleaseOutput(wtxmgr.LockID(tx.TxHash()), tx.TxIn[0].PreviousOutPoint)
-		if releaseErr != nil {
-			log.Printf("Failed to release output: %v", releaseErr)
-		}
-		return chainhash.Hash{}, false, fmt.Errorf("failed to broadcast and verify transaction: %v", err)
-	}
-
-	log.Println("Transaction broadcast and verified successfully.")
-	return txHash, verified, nil
 }
