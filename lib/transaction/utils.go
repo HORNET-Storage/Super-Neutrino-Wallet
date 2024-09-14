@@ -1,7 +1,6 @@
 package transaction
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
@@ -46,66 +44,6 @@ func isSegWitAddress(addr btcutil.Address) bool {
 	default:
 		return false
 	}
-}
-
-func createSignature(w *wallet.Wallet, tx *wire.MsgTx, inputIndex int, utxo *btcjson.ListUnspentResult, pkScript []byte) ([]byte, wire.TxWitness, error) {
-	inputAmount := int64(utxo.Amount * btcutil.SatoshiPerBitcoin)
-
-	// Decode the address from the UTXO
-	addr, err := btcutil.DecodeAddress(utxo.Address, w.ChainParams())
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to decode address: %v", err)
-	}
-
-	// Get the private key for the address
-	privKey, err := w.PrivKeyForAddress(addr)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get private key: %v", err)
-	}
-
-	// Create the previous output fetcher
-	prevOutputFetcher := txscript.NewCannedPrevOutputFetcher(pkScript, inputAmount)
-
-	// Check if it's a SegWit address
-	if isSegWitAddress(addr) {
-		witness, err := txscript.WitnessSignature(tx, txscript.NewTxSigHashes(tx, prevOutputFetcher), inputIndex, inputAmount, pkScript, txscript.SigHashAll, privKey, true)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create witness signature: %v", err)
-		}
-		return nil, witness, nil
-	} else {
-		sigScript, err := txscript.SignatureScript(tx, inputIndex, pkScript, txscript.SigHashAll, privKey, true)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create signature script: %v", err)
-		}
-		return sigScript, nil, nil
-	}
-}
-
-func validateTransaction(tx *wire.MsgTx, utxos []*btcjson.ListUnspentResult) error {
-	if len(tx.TxIn) != len(utxos) {
-		return fmt.Errorf("mismatch between transaction inputs (%d) and provided UTXOs (%d)", len(tx.TxIn), len(utxos))
-	}
-
-	for i, utxo := range utxos {
-		// Decode the scriptPubKey
-		scriptPubKey, err := hex.DecodeString(utxo.ScriptPubKey)
-		if err != nil {
-			return fmt.Errorf("failed to decode scriptPubKey for input %d: %v", i, err)
-		}
-
-		inputAmount := int64(utxo.Amount * btcutil.SatoshiPerBitcoin)
-
-		// Verify the signature
-		valid, err := verifySignature(tx, i, scriptPubKey, inputAmount)
-		if err != nil {
-			return fmt.Errorf("failed to verify signature for input %d: %v", i, err)
-		}
-		if !valid {
-			return fmt.Errorf("invalid signature for input %d", i)
-		}
-	}
-	return nil
 }
 
 func UpdateUTXOs(w *wallet.Wallet) error {
