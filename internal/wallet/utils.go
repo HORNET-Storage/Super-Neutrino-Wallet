@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"bufio"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -221,4 +222,12 @@ func generateInitialAddresses(w *wallet.Wallet, chainClient *chain.NeutrinoClien
 	}
 
 	return nil
+}
+
+func generateRandomPassphrase(length int) (string, error) {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
 }

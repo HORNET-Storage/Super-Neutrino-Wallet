@@ -75,6 +75,7 @@ func setDefaults() {
 	viper.SetDefault("jwt_keys_dir", "./jwtkeys")
 	viper.SetDefault("wallet_api_key", "")
 	viper.SetDefault("server_mode", true)
+	viper.SetDefault("relay_wallet_set", false)
 
 	// Example peers for both environments
 	viper.SetDefault("add_peers", []string{

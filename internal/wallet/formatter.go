@@ -24,6 +24,7 @@ import (
 var AppConfig types.Config
 
 func PerformRescanAndProcessTransactions(w *wallet.Wallet, chainClient *chain.NeutrinoClient, chainParams *chaincfg.Params, walletName string) error {
+
 	log.Println("Scanning for transactions")
 
 	lastScannedBlockHeight, err := walletstatedb.GetLastScannedBlockHeight()
@@ -45,15 +46,20 @@ func PerformRescanAndProcessTransactions(w *wallet.Wallet, chainClient *chain.Ne
 		return fmt.Errorf("error during rescan: %v", err)
 	}
 
-	FormatAndTransmitTransactions(w, walletName)
-	err = FetchAndSendWalletBalance(w, walletName)
-	if err != nil {
-		return fmt.Errorf("error sending wallet balance: %v", err)
-	}
+	if viper.GetBool("relay_wallet_set") && viper.GetString("wallet_name") == walletName {
 
-	err = SendReceiveAddressesToBackend(walletName)
-	if err != nil {
-		return fmt.Errorf("error sending receive addresses: %v", err)
+		if viper.GetBool("server_mode") {
+			FormatAndTransmitTransactions(w, walletName)
+			err = FetchAndSendWalletBalance(w, walletName)
+			if err != nil {
+				return fmt.Errorf("error sending wallet balance: %v", err)
+			}
+
+			err = SendReceiveAddressesToBackend(walletName)
+			if err != nil {
+				return fmt.Errorf("error sending receive addresses: %v", err)
+			}
+		}
 	}
 
 	return nil
