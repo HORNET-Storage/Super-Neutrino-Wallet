@@ -1,4 +1,4 @@
-# Nestr Wallet
+# Super Neutrino - BTC Desktop Wallet
 
 A secure and feature-rich Bitcoin wallet application built with Go.
 
