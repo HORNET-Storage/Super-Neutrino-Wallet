@@ -74,7 +74,7 @@ func OpenAndloadWallet(reader *bufio.Reader, baseDir string) error {
 	}
 
 	// If serverMode is true, ask if the user wants to use terminal mode
-	if viper.GetBool("server_mode") {
+	if viper.GetBool("server_mode") && viper.GetString("wallet_name") == walletName {
 		fmt.Print("This wallet is connected to the panel. If you use it in terminal/cli mode, it will not be connected to the panel.\nDo you want to use the wallet in terminal/CLI mode? (y/n): ")
 		cliChoice, _ := reader.ReadString('\n')
 		cliChoice = strings.TrimSpace(strings.ToLower(cliChoice))
