@@ -35,7 +35,7 @@ A secure and feature-rich Bitcoin wallet application built with Go.
 1. Clone the repository:
    ```
    git clone https://github.com/HORNET-Storage/Super-Neutrino-Wallet.git
-   cd Nestr-wallet
+   cd Super-Neutrino-wallet
    ```
 
 2. Install dependencies:
@@ -57,7 +57,7 @@ You can build the Super Neutrino Wallet using the provided `build.sh` script:
    ./build.sh
    ```
 
-This will create an executable named `Nestr-wallet` in your current directory.
+This will create an executable named `SN-wallet` in your current directory.
 
 ## Usage
 
