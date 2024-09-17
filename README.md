@@ -1,4 +1,4 @@
-# Nestr Wallet
+# Super Neutrino - BTC Desktop Wallet
 
 A secure and feature-rich Bitcoin wallet application built with Go.
 
@@ -45,7 +45,7 @@ A secure and feature-rich Bitcoin wallet application built with Go.
 
 ## Building
 
-You can build the Nestr wallet using the provided `build.sh` script:
+You can build the Super Neutrino Wallet using the provided `build.sh` script:
 
 1. Make the script executable:
    ```
@@ -61,7 +61,7 @@ This will create an executable named `Nestr-wallet` in your current directory.
 
 ## Usage
 
-To start the Nestr wallet application, simply run:
+To start the Super Neutrino Wallet application, simply run:
 
 ```
 ./Nestr-wallet
@@ -131,4 +131,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [btcsuite](https://github.com/btcsuite) for their Bitcoin libraries
 - [Neutrino](https://github.com/lightninglabs/neutrino) for lightweight node functionality
-- All contributors who have helped shape Nestr Wallet
+- All contributors who have helped shape Super Neutrino
