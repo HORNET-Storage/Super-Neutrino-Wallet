@@ -81,21 +81,29 @@ func deleteWalletFiles(walletName string) error {
 	// Delete the wallet .env file
 	if err := os.Remove(envFile); err != nil {
 		log.Printf("Failed to delete .env file: %v", err) // Continue even if env file removal fails
+	} else {
+		log.Printf("Successfully deleted .env file: %s", envFile)
 	}
 
 	// Delete the Neutrino wallet directory and its contents
 	if err := os.RemoveAll(neutrinoWalletDir); err != nil {
 		log.Printf("Failed to delete Neutrino wallet directory: %v", err)
+	} else {
+		log.Printf("Successfully deleted Neutrino wallet directory: %s", neutrinoWalletDir)
 	}
 
 	// Delete the Graviton DB file
-	if err := os.Remove(gravitonDbFile); err != nil {
+	if err := os.RemoveAll(gravitonDbFile); err != nil {
 		log.Printf("Failed to delete Graviton DB file: %v", err)
+	} else {
+		log.Printf("Successfully deleted Graviton DB file or directory: %s", gravitonDbFile)
 	}
 
 	// Delete the JWT key directory and its contents
 	if err := os.RemoveAll(jwtKeyDir); err != nil {
 		log.Printf("Failed to delete JWT key directory: %v", err)
+	} else {
+		log.Printf("Successfully deleted JWT key directory: %s", jwtKeyDir)
 	}
 
 	return nil
