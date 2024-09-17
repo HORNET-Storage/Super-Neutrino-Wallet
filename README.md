@@ -34,7 +34,7 @@ A secure and feature-rich Bitcoin wallet application built with Go.
 
 1. Clone the repository:
    ```
-   git clone https://github.com/Maphikza/Nestr-wallet.git
+   git clone https://github.com/HORNET-Storage/Super-Neutrino-Wallet.git
    cd Nestr-wallet
    ```
 
@@ -64,7 +64,7 @@ This will create an executable named `Nestr-wallet` in your current directory.
 To start the Super Neutrino Wallet application, simply run:
 
 ```
-./Nestr-wallet
+./SN-wallet
 ```
 
 You will be presented with the following options:
@@ -74,9 +74,10 @@ Bitcoin Wallet Manager
 1. Create a new wallet
 2. Import an existing wallet
 3. Login to an existing wallet
-4. Exit
+4. Delete a wallet
+5. Exit
 
-Enter your choice (1, 2, 3, or 4): 
+Enter your choice (1, 2, 3, 4, or 5):
 ```
 
 Navigate through the application by entering the number corresponding to your desired action:

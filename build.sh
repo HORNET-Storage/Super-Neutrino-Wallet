@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set the output binary name
-OUTPUT_BINARY="Nestr-wallet"
+OUTPUT_BINARY="SN-wallet"
 
 # Set the main package or the entry point for your Go application
 MAIN_PACKAGE="./cmd/wallet"
