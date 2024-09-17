@@ -88,7 +88,7 @@ Navigate through the application by entering the number corresponding to your de
 
 3. **Login to an existing wallet**: Access a wallet you've previously created or imported on this device.
 
-4. **Delete a wallet**: Select and permanently delete a wallet from the device. Caution: Deleting a wallet will remove its data from the device, but this action does not delete the wallet from the Bitcoin network. Ensure you have securely backed up the seed phrase before proceeding, as deleting without a backup means you permanently lose access to the wallet and any funds within it.
+4. **Delete a wallet**: Select and permanently delete a wallet from the device. **Caution**: Deleting a wallet will remove its data from the device, but this action does not delete the wallet from the Bitcoin network. Ensure you have securely backed up the seed phrase before proceeding, as deleting without a backup means you permanently lose access to the wallet and any funds within it.
 
 5. **Exit**: Close the application.
 
