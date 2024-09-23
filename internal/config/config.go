@@ -76,6 +76,7 @@ func setDefaults() {
 	viper.SetDefault("wallet_api_key", "")
 	viper.SetDefault("server_mode", true)
 	viper.SetDefault("relay_wallet_set", false)
+	viper.SetDefault("wallet_synced", false)
 
 	// Example peers for both environments
 	viper.SetDefault("add_peers", []string{

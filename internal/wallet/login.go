@@ -15,6 +15,7 @@ func OpenAndloadWallet(reader *bufio.Reader, baseDir string) error {
 	if err != nil {
 		log.Printf("Error reading viper config: %s", err.Error())
 	}
+
 	// List all available wallets
 	wallets, err := listWallets()
 	if err != nil {
@@ -100,6 +101,53 @@ func OpenAndloadWallet(reader *bufio.Reader, baseDir string) error {
 		serverMode = viper.GetBool("server_mode")
 	} else {
 		serverMode = false
+	}
+
+	err = setWalletLive(true)
+	if err != nil {
+		log.Printf("Error setting wallet live state: %v", err)
+	}
+
+	err = StartWallet(seedPhrase, pubPass, privPass, baseDir, walletName, birthdate, serverMode)
+	if err != nil {
+		return fmt.Errorf("failed to start wallet: %v", err)
+	}
+
+	fmt.Printf("Wallet '%s' loaded successfully.\n", walletName)
+	return nil
+}
+
+func OpenAndLoadWalletAPI(walletName, password string, baseDir string) error {
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Printf("Error reading viper config: %s", err.Error())
+	}
+	// Load the wallet data
+	seedPhrase, publicPass, privatePass, birthdate, err := LoadWalletAPI(walletName, password)
+	if err != nil {
+		return fmt.Errorf("error loading wallet: %v", err)
+	}
+
+	// Check if the wallet is set to connect to the relay (i.e., "panel" mode)
+	var serverMode bool
+	if viper.GetBool("relay_wallet_set") && viper.GetString("wallet_name") == walletName {
+		serverMode = true
+	} else {
+		serverMode = false
+	}
+
+	// Convert string passphrases to byte slices
+	pubPass := []byte(publicPass)
+	privPass := []byte(privatePass)
+
+	err = setWalletLive(true)
+	if err != nil {
+		log.Printf("Error setting wallet live state: %v", err)
+	}
+
+	err = setWalletSync(false)
+	if err != nil {
+		log.Printf("Error setting wallet sync state: %v", err)
 	}
 
 	err = StartWallet(seedPhrase, pubPass, privPass, baseDir, walletName, birthdate, serverMode)

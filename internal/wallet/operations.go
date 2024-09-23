@@ -5,16 +5,19 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/ipc"
 	transaction "github.com/Maphikza/btc-wallet-btcsuite.git/lib/transaction"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcwallet/chain"
 	"github.com/lightninglabs/neutrino"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -25,7 +28,21 @@ var (
 )
 
 func (s *WalletServer) serverLoop() error {
+
 	syncTicker := time.NewTicker(syncInterval)
+
+	ipcServer, err := ipc.NewServer()
+	if err != nil {
+		return fmt.Errorf("failed to create IPC server: %v", err)
+	}
+	defer ipcServer.Close()
+
+	err = setWalletSync(true)
+	if err != nil {
+		log.Printf("Error setting wallet sync state: %v", err)
+	}
+
+	go s.handleIPCCommands(ipcServer)
 
 	userCommandChannel := make(chan string)
 	go listenForUserCommands(userCommandChannel)
@@ -35,6 +52,12 @@ func (s *WalletServer) serverLoop() error {
 		case <-syncTicker.C:
 			if !transacting {
 				engaged = true
+
+				err = setWalletSync(false)
+				if err != nil {
+					log.Printf("Error setting wallet sync state: %v", err)
+				}
+
 				s.syncBlockchain()
 
 				s.API.ChainClient.Notifications()
@@ -55,6 +78,11 @@ func (s *WalletServer) serverLoop() error {
 					}
 				}
 				engaged = false
+				err = setWalletSync(true)
+				if err != nil {
+					log.Printf("Error setting wallet sync state: %v", err)
+				}
+
 			}
 
 		case command := <-userCommandChannel:
@@ -67,6 +95,44 @@ func (s *WalletServer) serverLoop() error {
 			}
 		}
 	}
+}
+
+func setWalletSync(synced bool) error {
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Printf("Error reading viper config: %s", err.Error())
+	}
+
+	if !viper.IsSet("wallet_synced") {
+		viper.Set("wallet_synced", synced)
+	} else {
+		viper.Set("wallet_synced", synced)
+	}
+
+	err = viper.WriteConfig()
+	if err != nil {
+		return fmt.Errorf("error writing config file: %w", err)
+	}
+	return nil
+}
+
+func setWalletLive(live bool) error {
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Printf("Error reading viper config: %s", err.Error())
+	}
+
+	if !viper.IsSet("wallet_live") {
+		viper.Set("wallet_live", live)
+	} else {
+		viper.Set("wallet_live", live)
+	}
+
+	err = viper.WriteConfig()
+	if err != nil {
+		return fmt.Errorf("error writing config file: %w", err)
+	}
+	return nil
 }
 
 func (s *WalletServer) handleCommand(command string) error {
@@ -86,6 +152,36 @@ func (s *WalletServer) handleCommand(command string) error {
 	}
 }
 
+func (s *WalletServer) handleIPCCommands(server *ipc.Server) {
+	for cmd := range server.Commands() {
+		var result interface{}
+		var err error
+
+		switch cmd.Command {
+		case "new-transaction":
+			recipient := cmd.Args[0]
+			amount := cmd.Args[1]
+			feeRate := cmd.Args[2]
+			result, err = s.NewTransactionAPI(recipient, amount, feeRate)
+		case "rbf-transaction":
+			originalTxID := cmd.Args[0]
+			newFeeRate := cmd.Args[1]
+			result, err = s.RBFTransactionAPI(originalTxID, newFeeRate)
+		case "get-wallet-balance":
+			result, err = s.handleGetWalletBalance()
+		case "estimate-transaction-size":
+			result, err = s.handleEstimateTransactionSize(cmd.Args)
+		case "get-transaction-history":
+			result, err = s.handleGetTransactionHistory()
+		default:
+			err = fmt.Errorf("unknown command: %s", cmd.Command)
+		}
+		log.Println("CMD Results: ", result)
+		response := ipc.Response{ID: cmd.ID, Error: err, Result: result}
+		server.SendResponse(cmd.ID, response)
+	}
+}
+
 func listenForUserCommands(commandChannel chan<- string) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
@@ -102,6 +198,44 @@ func listenForUserCommands(commandChannel chan<- string) {
 		}
 		time.Sleep(100 * time.Millisecond) // Add a small delay to reduce CPU usage
 	}
+}
+
+func (s *WalletServer) handleGetWalletBalance() (interface{}, error) {
+	balance, err := GetWalletBalance(s.API.Wallet)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("Wallet balance retrieved: %d\n", balance)
+	return map[string]int64{"balance": balance}, nil
+}
+
+func (s *WalletServer) handleEstimateTransactionSize(args []string) (interface{}, error) {
+	if len(args) != 3 {
+		return nil, fmt.Errorf("invalid number of arguments for estimate-transaction-size")
+	}
+	spendAmount, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid spend amount: %v", err)
+	}
+	recipientAddress := args[1]
+	feeRate, err := strconv.Atoi(args[2])
+	if err != nil {
+		return nil, fmt.Errorf("invalid fee rate: %v", err)
+	}
+
+	size, err := EstimateTransactionSize(s.API.Wallet, spendAmount, recipientAddress, feeRate)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]int{"size": size}, nil
+}
+
+func (s *WalletServer) handleGetTransactionHistory() (interface{}, error) {
+	history, err := GetTransactionHistory(s.API.Wallet, s.API.Name)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{"transactions": history}, nil
 }
 
 func (s *WalletServer) viewSeedPhrase() error {
@@ -129,6 +263,10 @@ func (s *WalletServer) exitWallet() error {
 
 	if confirmation == "y" {
 		exiting = true
+		err := setWalletLive(false)
+		if err != nil {
+			log.Printf("Error setting wallet live state: %v", err)
+		}
 		fmt.Println("Initiating graceful shutdown...")
 		if err := gracefulShutdown(); err != nil {
 			return fmt.Errorf("error during shutdown: %v", err)
@@ -324,6 +462,54 @@ func (s *WalletServer) performTransaction() error {
 	}
 
 	return nil
+}
+
+func (s *WalletServer) NewTransactionAPI(recipient string, amountStr, feeRateStr string) (map[string]interface{}, error) {
+	amount, err := strconv.ParseInt(amountStr, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid amount: %v", err)
+	}
+
+	feeRate, err := strconv.ParseInt(feeRateStr, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid fee rate: %v", err)
+	}
+
+	txHash, verified, err := transaction.HttpCheckBalanceAndCreateTransaction(s.API.Wallet, s.API.ChainClient.CS, true, amount, recipient, s.API.PrivPass, int(feeRate))
+	if err != nil {
+		return nil, fmt.Errorf("transaction failed: %v", err)
+	}
+
+	return map[string]interface{}{
+		"txHash":   txHash.String(),
+		"verified": verified,
+	}, nil
+}
+
+func (s *WalletServer) RBFTransactionAPI(originalTxID, newFeeRateStr string) (map[string]interface{}, error) {
+	newFeeRate, err := strconv.ParseInt(newFeeRateStr, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid fee rate: %v", err)
+	}
+
+	client, err := transaction.CreateElectrumClient(transaction.ElectrumConfig{
+		ServerAddr: "electrum.blockstream.info:50002",
+		UseSSL:     true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Electrum client: %v", err)
+	}
+	defer client.Shutdown()
+
+	newTxID, verified, err := transaction.ReplaceTransactionWithHigherFee(s.API.Wallet, s.API.ChainClient.CS, originalTxID, newFeeRate, client, s.API.PrivPass)
+	if err != nil {
+		return nil, fmt.Errorf("RBF transaction failed: %v", err)
+	}
+
+	return map[string]interface{}{
+		"newTxID":  newTxID.String(),
+		"verified": verified,
+	}, nil
 }
 
 func (s *WalletServer) syncBlockchain() {

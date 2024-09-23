@@ -11,6 +11,7 @@ import (
 
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/api"
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/logger"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/lib/utils"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
@@ -50,6 +51,7 @@ func StartWallet(seedPhrase string, pubPass []byte, privPass []byte, baseDir str
 	defer server.Close()
 
 	log.Println("Bitcoin wallet application initialized successfully")
+	logger.Info("Bitcoin wallet application initialized successfully")
 
 	if httpMode {
 		return server.StartHTTPSServer() // Start the HTTP server

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"github.com/tyler-smith/go-bip39"
 )
 
 func ExistingWallet(reader *bufio.Reader) error {
@@ -24,6 +25,10 @@ func ExistingWallet(reader *bufio.Reader) error {
 	fmt.Print("Enter your existing seed phrase: ")
 	mnemonic, _ := reader.ReadString('\n')
 	mnemonic = strings.TrimSpace(mnemonic)
+
+	if !isValidMnemonic(mnemonic) {
+		return fmt.Errorf("invalid mnemonic provided")
+	}
 
 	fmt.Print("Enter your wallet's birthdate (YYYY-MM-DD): ")
 	birthdateStr, _ := reader.ReadString('\n')
@@ -95,57 +100,53 @@ func ExistingWallet(reader *bufio.Reader) error {
 	return nil
 }
 
-// package wallet
+func ImportWalletAPI(walletName, mnemonic, password, birthdate, pubKey, apiKey string) error {
+	// Validate the mnemonic
+	if !isValidMnemonic(mnemonic) {
+		return fmt.Errorf("invalid mnemonic provided")
+	}
 
-// import (
-// 	"bufio"
-// 	"fmt"
-// 	"strings"
-// 	"time"
-// )
+	// Parse the birthdate
+	parsedBirthdate, err := time.Parse("2006-01-02", birthdate)
+	if err != nil {
+		return fmt.Errorf("invalid date format: %v", err)
+	}
 
-// func ExistingWallet(reader *bufio.Reader) error {
-// 	fmt.Print("Enter a name for your existing wallet: ")
-// 	walletName, _ := reader.ReadString('\n')
-// 	walletName = strings.TrimSpace(walletName)
+	encryptedMnemonic := encrypt(mnemonic, password)
+	encryptedBirthdate := encrypt(parsedBirthdate.Format(timeFormat), password)
 
-// 	fmt.Print("Enter your existing seed phrase: ")
-// 	mnemonic, _ := reader.ReadString('\n')
-// 	mnemonic = strings.TrimSpace(mnemonic)
+	if pubKey != "" && apiKey != "" {
+		viper.Set("relay_wallet_set", false)
+		viper.Set("wallet_name", walletName)
+		viper.Set("wallet_api_key", apiKey)
+		viper.Set("user_pubkey", pubKey)
+	}
 
-// 	fmt.Print("Enter your wallet's birthdate (YYYY-MM-DD): ")
-// 	birthdateStr, _ := reader.ReadString('\n')
-// 	birthdateStr = strings.TrimSpace(birthdateStr)
-// 	birthdate, err := time.Parse("2006-01-02", birthdateStr)
-// 	if err != nil {
-// 		return fmt.Errorf("invalid date format: %v", err)
-// 	}
+	err = viper.WriteConfig()
+	if err != nil {
+		return fmt.Errorf("error writing config file: %w", err)
+	}
 
-// 	fmt.Print("Enter a password to encrypt your wallet: ")
-// 	password, _ := reader.ReadString('\n')
-// 	password = strings.TrimSpace(password)
+	// Generate public passphrase
+	pubPass, err := generateRandomPassphrase(16)
+	if err != nil {
+		return fmt.Errorf("error generating public passphrase: %v", err)
+	}
 
-// 	encryptedMnemonic := encrypt(mnemonic, password)
-// 	encryptedBirthdate := encrypt(birthdate.Format(timeFormat), password)
+	// Generate private passphrase
+	privPass, err := generateRandomPassphrase(32)
+	if err != nil {
+		return fmt.Errorf("error generating private passphrase: %v", err)
+	}
 
-// 	// Generate public passphrase
-// 	pubPass, err := generateRandomPassphrase(16) // 32 characters long
-// 	if err != nil {
-// 		return fmt.Errorf("error generating public passphrase: %v", err)
-// 	}
+	encryptedPubPass := encrypt(pubPass, password)
+	encryptedPrivPass := encrypt(privPass, password)
 
-// 	// Generate private passphrase
-// 	privPass, err := generateRandomPassphrase(32) // 64 characters long
-// 	if err != nil {
-// 		return fmt.Errorf("error generating private passphrase: %v", err)
-// 	}
+	saveWalletData(walletName, encryptedMnemonic, encryptedPubPass, encryptedPrivPass, encryptedBirthdate)
 
-// 	encryptedPubPass := encrypt(pubPass, password)
-// 	encryptedPrivPass := encrypt(privPass, password)
+	return nil
+}
 
-// 	saveWalletData(walletName, encryptedMnemonic, encryptedPubPass, encryptedPrivPass, encryptedBirthdate)
-
-// 	fmt.Printf("Existing wallet '%s' encrypted and saved successfully.\n", walletName)
-
-// 	return nil
-// }
+func isValidMnemonic(mnemonic string) bool {
+	return bip39.IsMnemonicValid(mnemonic)
+}

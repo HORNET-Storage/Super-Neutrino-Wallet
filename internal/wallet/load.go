@@ -65,6 +65,50 @@ func loadWallet(walletName string) (string, string, string, time.Time, error) {
 	return seedPhrase, pubPass, privPass, birthdate, nil
 }
 
+func LoadWalletAPI(walletName, password string) (string, string, string, time.Time, error) {
+	envFile := filepath.Join(walletDir, walletName+".env")
+	err := godotenv.Load(envFile)
+	if err != nil {
+		return "", "", "", time.Time{}, fmt.Errorf("error loading wallet file: %v", err)
+	}
+
+	encryptedSeedPhrase := os.Getenv("ENCRYPTED_SEED_PHRASE")
+	encryptedPubPass := os.Getenv("ENCRYPTED_PUBLIC_PASSPHRASE")
+	encryptedPrivPass := os.Getenv("ENCRYPTED_PRIVATE_PASSPHRASE")
+	encryptedBirthdate := os.Getenv("ENCRYPTED_BIRTHDATE")
+
+	if encryptedSeedPhrase == "" || encryptedPubPass == "" || encryptedPrivPass == "" || encryptedBirthdate == "" {
+		return "", "", "", time.Time{}, fmt.Errorf("encrypted wallet data not found")
+	}
+
+	seedPhrase, err := decrypt(encryptedSeedPhrase, password)
+	if err != nil {
+		return "", "", "", time.Time{}, fmt.Errorf("error decrypting seed phrase: %v", err)
+	}
+
+	pubPass, err := decrypt(encryptedPubPass, password)
+	if err != nil {
+		return "", "", "", time.Time{}, fmt.Errorf("error decrypting public passphrase: %v", err)
+	}
+
+	privPass, err := decrypt(encryptedPrivPass, password)
+	if err != nil {
+		return "", "", "", time.Time{}, fmt.Errorf("error decrypting private passphrase: %v", err)
+	}
+
+	birthdateStr, err := decrypt(encryptedBirthdate, password)
+	if err != nil {
+		return "", "", "", time.Time{}, fmt.Errorf("error decrypting birthdate: %v", err)
+	}
+
+	birthdate, err := time.Parse(timeFormat, birthdateStr)
+	if err != nil {
+		return "", "", "", time.Time{}, fmt.Errorf("error parsing birthdate: %v", err)
+	}
+
+	return seedPhrase, pubPass, privPass, birthdate, nil
+}
+
 func listWallets() ([]string, error) {
 	files, err := os.ReadDir(walletDir)
 	if err != nil {

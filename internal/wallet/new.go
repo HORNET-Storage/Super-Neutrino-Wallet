@@ -103,75 +103,63 @@ func CreateNewWallet(reader *bufio.Reader) error {
 	return nil
 }
 
-// package wallet
+func CreateWalletAPI(walletName, password, pubKey, apiKey string) (string, error) {
+	log.Printf("Creating new wallet: %s", walletName)
 
-// import (
-// 	"bufio"
-// 	"crypto/rand"
-// 	"encoding/hex"
-// 	"fmt"
-// 	"strings"
-// 	"time"
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Printf("Error reading viper config: %s", err.Error())
+	}
 
-// 	"github.com/tyler-smith/go-bip39"
-// )
+	entropy, err := bip39.NewEntropy(256)
+	if err != nil {
+		return "", fmt.Errorf("error generating entropy: %v", err)
+	}
 
-// func generateRandomPassphrase(length int) (string, error) {
-// 	bytes := make([]byte, length)
-// 	if _, err := rand.Read(bytes); err != nil {
-// 		return "", err
-// 	}
-// 	return hex.EncodeToString(bytes), nil
-// }
+	mnemonic, err := bip39.NewMnemonic(entropy)
+	if err != nil {
+		return "", fmt.Errorf("error generating mnemonic: %v", err)
+	}
 
-// func CreateNewWallet(reader *bufio.Reader) error {
-// 	fmt.Print("Enter a name for your new wallet: ")
-// 	walletName, _ := reader.ReadString('\n')
-// 	walletName = strings.TrimSpace(walletName)
+	encryptedMnemonic := encrypt(mnemonic, password)
 
-// 	entropy, err := bip39.NewEntropy(256)
-// 	if err != nil {
-// 		return fmt.Errorf("error generating entropy: %v", err)
-// 	}
+	// Set panel wallet configuration if pubKey and apiKey are provided
+	if pubKey != "" && apiKey != "" {
+		viper.Set("relay_wallet_set", true)
+		viper.Set("wallet_name", walletName)
+		viper.Set("wallet_api_key", apiKey)
+		viper.Set("user_pubkey", pubKey)
+	}
 
-// 	mnemonic, err := bip39.NewMnemonic(entropy)
-// 	if err != nil {
-// 		return fmt.Errorf("error generating mnemonic: %v", err)
-// 	}
+	err = viper.WriteConfig()
+	if err != nil {
+		return "", fmt.Errorf("error writing config file: %w", err)
+	}
 
-// 	fmt.Println("Your new seed phrase is:")
-// 	fmt.Println(mnemonic)
-// 	fmt.Println("Please write this down and keep it safe.")
+	// Generate public passphrase
+	pubPass, err := generateRandomPassphrase(16)
+	if err != nil {
+		return "", fmt.Errorf("error generating public passphrase: %v", err)
+	}
 
-// 	fmt.Print("Enter a password to encrypt your wallet: ")
-// 	password, _ := reader.ReadString('\n')
-// 	password = strings.TrimSpace(password)
+	// Generate private passphrase
+	privPass, err := generateRandomPassphrase(32)
+	if err != nil {
+		return "", fmt.Errorf("error generating private passphrase: %v", err)
+	}
 
-// 	encryptedMnemonic := encrypt(mnemonic, password)
+	encryptedPubPass := encrypt(pubPass, password)
+	encryptedPrivPass := encrypt(privPass, password)
 
-// 	// Generate public passphrase
-// 	pubPass, err := generateRandomPassphrase(16) // 32 characters long
-// 	if err != nil {
-// 		return fmt.Errorf("error generating public passphrase: %v", err)
-// 	}
+	// Set birthdate to current date and time
+	birthdate := time.Now().UTC()
+	encryptedBirthdate := encrypt(birthdate.Format(timeFormat), password)
 
-// 	// Generate private passphrase
-// 	privPass, err := generateRandomPassphrase(32) // 64 characters long
-// 	if err != nil {
-// 		return fmt.Errorf("error generating private passphrase: %v", err)
-// 	}
+	// Save wallet data
+	saveWalletData(walletName, encryptedMnemonic, encryptedPubPass, encryptedPrivPass, encryptedBirthdate)
 
-// 	encryptedPubPass := encrypt(pubPass, password)
-// 	encryptedPrivPass := encrypt(privPass, password)
+	log.Printf("Wallet '%s' created and encrypted successfully.", walletName)
+	log.Printf("Wallet birthdate: %s", birthdate.Format("2006-01-02"))
 
-// 	// Set birthdate to current date and time
-// 	birthdate := time.Now().UTC()
-// 	encryptedBirthdate := encrypt(birthdate.Format(timeFormat), password)
-
-// 	saveWalletData(walletName, encryptedMnemonic, encryptedPubPass, encryptedPrivPass, encryptedBirthdate)
-
-// 	fmt.Printf("Wallet '%s' created and encrypted successfully.\n", walletName)
-// 	fmt.Printf("Wallet birthdate: %s\n", birthdate.Format("2006-01-02"))
-
-// 	return nil
-// }
+	return mnemonic, nil
+}
