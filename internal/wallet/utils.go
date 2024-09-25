@@ -267,7 +267,7 @@ func GetTransactionHistory(w *wallet.Wallet, walletName string) ([]map[string]in
 		transaction := map[string]interface{}{
 			"txid":   tx.TxID,
 			"date":   time.Unix(tx.Time, 0).Format(time.RFC3339),
-			"amount": tx.Amount,
+			"amount": fmt.Sprintf("%.8f", tx.Amount),
 		}
 		result = append(result, transaction)
 	}

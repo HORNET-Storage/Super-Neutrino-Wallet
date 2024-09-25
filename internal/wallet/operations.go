@@ -173,6 +173,10 @@ func (s *WalletServer) handleIPCCommands(server *ipc.Server) {
 			result, err = s.handleEstimateTransactionSize(cmd.Args)
 		case "get-transaction-history":
 			result, err = s.handleGetTransactionHistory()
+		case "get-receive-addresses":
+			result, err = s.handleGetReceiveAddresses()
+		case "exit":
+			err = s.exitWalletCMD()
 		default:
 			err = fmt.Errorf("unknown command: %s", cmd.Command)
 		}
@@ -238,11 +242,65 @@ func (s *WalletServer) handleGetTransactionHistory() (interface{}, error) {
 	return map[string]interface{}{"transactions": history}, nil
 }
 
+func (s *WalletServer) handleGetReceiveAddresses() (interface{}, error) {
+	// Retrieve receive and change addresses
+	receiveAddresses, _, err := walletstatedb.RetrieveAddresses()
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert []btcutil.Address to []string
+	receiveAddressStrings := make([]string, len(receiveAddresses))
+	for i, addr := range receiveAddresses {
+		receiveAddressStrings[i] = addr.String() // Convert each btcutil.Address to its string representation
+	}
+
+	log.Printf("Receive addresses retrieved: %v\n", receiveAddressStrings)
+	return map[string][]string{"addresses": receiveAddressStrings}, nil
+}
+
 func (s *WalletServer) viewSeedPhrase() error {
 	engaged = true
 	defer func() { engaged = false }()
 
 	return viewSeedPhrase()
+}
+
+func (s *WalletServer) exitWalletCMD() error {
+	exitMutex.Lock()
+	defer exitMutex.Unlock()
+
+	if exiting {
+		return nil // Exit is already in progress, do nothing
+	}
+
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Printf("Error reading viper config: %s", err.Error())
+	}
+
+	engaged = true
+	defer func() { engaged = false }()
+
+	// Set wallet_synced and wallet_live to false before initiating the shutdown
+	err = setWalletSync(false)
+	if err != nil {
+		log.Printf("Error setting wallet synced state to false: %v", err)
+	}
+
+	err = setWalletLive(false)
+	if err != nil {
+		log.Printf("Error setting wallet live state: %v", err)
+	}
+
+	exiting = true
+	fmt.Println("Initiating graceful shutdown...")
+
+	if err := gracefulShutdown(); err != nil {
+		return fmt.Errorf("error during shutdown: %v", err)
+	}
+
+	return nil
 }
 
 func (s *WalletServer) exitWallet() error {

@@ -34,6 +34,8 @@ func init() {
 	rootCmd.AddCommand(getWalletBalanceCmd)
 	rootCmd.AddCommand(estimateTransactionSizeCmd)
 	rootCmd.AddCommand(getTransactionHistoryCmd)
+	rootCmd.AddCommand(getReceiveAddressesCmd)
+	rootCmd.AddCommand(exitWalletCmd)
 }
 
 func initConfig() {
@@ -353,6 +355,52 @@ var getTransactionHistoryCmd = &cobra.Command{
 		}
 
 		log.Println("Transaction History: ", result)
+
+		json.NewEncoder(os.Stdout).Encode(result)
+	},
+}
+
+var getReceiveAddressesCmd = &cobra.Command{
+	Use:   "get-receive-addresses",
+	Short: "Get all generated receive addresses from the wallet",
+	Long:  "Retrieve a list of all generated receive addresses from the wallet.",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		client, err := ipc.NewClient()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error connecting to wallet server: %v\n", err)
+			os.Exit(1)
+		}
+		defer client.Close()
+
+		result, err := client.SendCommand("get-receive-addresses", nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting receive addresses: %v\n", err)
+			os.Exit(1)
+		}
+
+		json.NewEncoder(os.Stdout).Encode(result)
+	},
+}
+
+var exitWalletCmd = &cobra.Command{
+	Use:   "exit",
+	Short: "Exit and shut down the wallet",
+	Long:  "Gracefully shut down the wallet.",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		client, err := ipc.NewClient()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error connecting to wallet server: %v\n", err)
+			os.Exit(1)
+		}
+		defer client.Close()
+
+		result, err := client.SendCommand("exit", nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error exiting wallet: %v\n", err)
+			os.Exit(1)
+		}
 
 		json.NewEncoder(os.Stdout).Encode(result)
 	},
