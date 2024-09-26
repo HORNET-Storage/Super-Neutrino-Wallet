@@ -268,6 +268,8 @@ var rbfTransactionCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		log.Println("RBF result: ", result)
+
 		json.NewEncoder(os.Stdout).Encode(result)
 	},
 }
@@ -401,6 +403,8 @@ var exitWalletCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Error exiting wallet: %v\n", err)
 			os.Exit(1)
 		}
+
+		log.Println("Exit Result: ", result)
 
 		json.NewEncoder(os.Stdout).Encode(result)
 	},
