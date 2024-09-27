@@ -240,7 +240,7 @@ func ReplaceTransactionWithHigherFee(w *wallet.Wallet, service *neutrino.ChainSe
 	}
 
 	// Broadcast and verify the transaction
-	txHash, verified, err := broadcastAndVerifyTransaction(newTx, service)
+	txHash, verified, err := broadcastAndVerifyTransaction(newTx)
 	if err != nil {
 		return chainhash.Hash{}, false, fmt.Errorf("failed to broadcast and verify RBF transaction: %v", err)
 	}

@@ -12,7 +12,6 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/lightninglabs/neutrino"
 )
 
 func BroadcastTransactionMultiAPI(tx *wire.MsgTx) error {
@@ -87,7 +86,7 @@ func broadcastToAPI(url, data, contentType string) error {
 	return fmt.Errorf("API returned non-200 status code: %d, Body: %s", resp.StatusCode, string(body))
 }
 
-func broadcastAndVerifyTransaction(tx *wire.MsgTx, service *neutrino.ChainService) (chainhash.Hash, bool, error) {
+func broadcastAndVerifyTransaction(tx *wire.MsgTx) (chainhash.Hash, bool, error) {
 	// Start with multi-API broadcast
 	err := BroadcastTransactionMultiAPI(tx)
 	if err == nil {
@@ -96,15 +95,6 @@ func broadcastAndVerifyTransaction(tx *wire.MsgTx, service *neutrino.ChainServic
 	}
 
 	log.Printf("API broadcast failed: %v. Trying neutrino ChainService...", err)
-
-	// Fallback to neutrino ChainService if API broadcast fails
-	err = service.SendTransaction(tx)
-	if err == nil {
-		log.Printf("Transaction broadcast successfully via neutrino ChainService. TxID: %s", tx.TxHash().String())
-		return tx.TxHash(), true, nil
-	}
-
-	log.Printf("Neutrino ChainService broadcast failed: %v. Performing mempool check...", err)
 
 	// If all broadcast attempts failed, wait 5 seconds and then check mempool
 	time.Sleep(5 * time.Second)
