@@ -12,6 +12,7 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/lightninglabs/neutrino"
 )
 
 func BroadcastTransactionMultiAPI(tx *wire.MsgTx) error {
@@ -86,7 +87,7 @@ func broadcastToAPI(url, data, contentType string) error {
 	return fmt.Errorf("API returned non-200 status code: %d, Body: %s", resp.StatusCode, string(body))
 }
 
-func broadcastAndVerifyTransaction(tx *wire.MsgTx) (chainhash.Hash, bool, error) {
+func broadcastAndVerifyTransaction(tx *wire.MsgTx, service *neutrino.ChainService) (chainhash.Hash, bool, error) {
 	// Start with multi-API broadcast
 	err := BroadcastTransactionMultiAPI(tx)
 	if err == nil {
@@ -96,22 +97,32 @@ func broadcastAndVerifyTransaction(tx *wire.MsgTx) (chainhash.Hash, bool, error)
 
 	log.Printf("API broadcast failed: %v. Trying neutrino ChainService...", err)
 
-	// If all broadcast attempts failed, wait 5 seconds and then check mempool
-	time.Sleep(5 * time.Second)
+	// Fallback to neutrino ChainService if API broadcast fails
+	err = service.SendTransaction(tx)
+	if err == nil {
+		log.Printf("Transaction broadcast via neutrino ChainService. Verifying mempool...")
 
-	// Check mempool
-	inMempool, err := verifyTransactionInMempool(tx.TxHash())
-	if err != nil {
-		log.Printf("Failed to verify transaction in mempool: %v", err)
-		return chainhash.Hash{}, false, fmt.Errorf("all broadcasts failed and mempool check error: %v", err)
+		time.Sleep(5 * time.Second)
+
+		// After sending the transaction, immediately verify if it is in the mempool
+		inMempool, err := verifyTransactionInMempool(tx.TxHash())
+		if err != nil {
+			log.Printf("Mempool verification failed after neutrino broadcast: %v", err)
+			return chainhash.Hash{}, false, fmt.Errorf("neutrino broadcast succeeded but mempool check failed: %v", err)
+		}
+
+		if inMempool {
+			log.Printf("Transaction successfully broadcast and found in mempool. TxID: %s", tx.TxHash().String())
+			return tx.TxHash(), true, nil
+		}
+
+		// If not found in mempool, treat as failure despite the successful broadcast call
+		log.Printf("Neutrino broadcast succeeded but transaction not found in mempool. TxID: %s", tx.TxHash().String())
+		return chainhash.Hash{}, false, fmt.Errorf("neutrino broadcast succeeded but transaction not found in mempool")
 	}
 
-	if inMempool {
-		log.Printf("Transaction found in mempool despite broadcast failures")
-		return tx.TxHash(), true, nil
-	}
+	log.Printf("Neutrino ChainService broadcast failed: %v", err)
 
-	// Transaction was not successfully broadcast and not found in mempool
-	log.Printf("Transaction not found in mempool. Broadcast likely failed.")
-	return tx.TxHash(), false, fmt.Errorf("all broadcast attempts failed and transaction not found in mempool")
+	// If we reach this point, all broadcast attempts have failed
+	return chainhash.Hash{}, false, fmt.Errorf("all broadcast attempts failed: %v", err)
 }

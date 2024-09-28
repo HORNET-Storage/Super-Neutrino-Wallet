@@ -252,7 +252,7 @@ func CheckBalanceAndCreateTransaction(w *wallet.Wallet, service *neutrino.ChainS
 	}
 	defer electrumClient.Shutdown()
 
-	txHash, verified, err := broadcastAndVerifyTransaction(tx)
+	txHash, verified, err := broadcastAndVerifyTransaction(tx, service)
 	if err != nil {
 		// Release the output we tried to spend
 		releaseErr := w.ReleaseOutput(wtxmgr.LockID(tx.TxHash()), tx.TxIn[0].PreviousOutPoint)
@@ -480,7 +480,7 @@ func HttpCheckBalanceAndCreateTransaction(w *wallet.Wallet, service *neutrino.Ch
 	}
 	defer electrumClient.Shutdown()
 
-	txHash, verified, err := broadcastAndVerifyTransaction(tx)
+	txHash, verified, err := broadcastAndVerifyTransaction(tx, service)
 	if err != nil {
 		// Release the output we tried to spend
 		releaseErr := w.ReleaseOutput(wtxmgr.LockID(tx.TxHash()), tx.TxIn[0].PreviousOutPoint)
