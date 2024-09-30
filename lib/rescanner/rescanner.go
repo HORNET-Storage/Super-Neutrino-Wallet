@@ -11,19 +11,9 @@ import (
 	"github.com/btcsuite/btcd/rpcclient"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcwallet/chain"
-	"github.com/btcsuite/btcwallet/wallet"
 	"github.com/lightninglabs/neutrino"
 	"github.com/lightninglabs/neutrino/headerfs"
 )
-
-// RescanConfig holds the configuration for the rescan operation
-type RescanConfig struct {
-	ChainClient *chain.NeutrinoClient
-	ChainParams *chaincfg.Params
-	StartBlock  int32
-	Wallet      *wallet.Wallet
-}
 
 func PerformRescan(config RescanConfig) error {
 	log.Println("Starting transaction recovery process")
