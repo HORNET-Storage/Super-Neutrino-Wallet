@@ -12,7 +12,6 @@ import (
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/api"
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/logger"
-	"github.com/Maphikza/btc-wallet-btcsuite.git/lib/utils"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -153,7 +152,7 @@ func initializeWallet(seedPhrase string, pubPass []byte, privPass []byte, baseDi
 
 	// TODO: Remove this once all testing it done.
 	if forceNewWallet {
-		if err := utils.CleanupExistingData(neutrinoDBPath, walletDBPath); err != nil {
+		if err := CleanupExistingData(neutrinoDBPath, walletDBPath); err != nil {
 			return nil, nil, nil, nil, nil, fmt.Errorf("error cleaning up existing data: %v", err)
 		}
 		log.Println("Existing data cleaned up successfully")

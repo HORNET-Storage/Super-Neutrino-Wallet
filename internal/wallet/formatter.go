@@ -14,14 +14,11 @@ import (
 
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/lib/rescanner"
-	"github.com/Maphikza/btc-wallet-btcsuite.git/lib/types"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcwallet/chain"
 	"github.com/btcsuite/btcwallet/wallet"
 	"github.com/spf13/viper"
 )
-
-var AppConfig types.Config
 
 func PerformRescanAndProcessTransactions(w *wallet.Wallet, chainClient *chain.NeutrinoClient, chainParams *chaincfg.Params, walletName string) error {
 
