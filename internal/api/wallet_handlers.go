@@ -8,159 +8,15 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
-	"github.com/Maphikza/btc-wallet-btcsuite.git/lib/transaction"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcwallet/chain"
-	"github.com/btcsuite/btcwallet/wallet"
-	"github.com/btcsuite/btcwallet/walletdb"
 	"github.com/deroproject/graviton"
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/lightninglabs/neutrino"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/spf13/viper"
 )
-
-type API struct {
-	Wallet       *wallet.Wallet
-	ChainParams  *chaincfg.Params
-	ChainService *neutrino.ChainService
-	ChainClient  *chain.NeutrinoClient
-	NeutrinoDB   walletdb.DB
-	PrivPass     []byte
-	Name         string
-	HttpMode     bool
-}
-
-func NewAPI(wallet *wallet.Wallet, chainParams *chaincfg.Params, chainService *neutrino.ChainService,
-	chainClient *chain.NeutrinoClient, neutrinoDB walletdb.DB, privPass []byte,
-	name string, httpMode bool) *API {
-	return &API{
-		Wallet:       wallet,
-		ChainParams:  chainParams,
-		ChainService: chainService,
-		ChainClient:  chainClient,
-		NeutrinoDB:   neutrinoDB,
-		PrivPass:     privPass,
-		Name:         name,
-		HttpMode:     httpMode,
-	}
-}
-
-func (s *API) TransactionHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req TransactionRequest
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	txid, status, message := s.performHttpTransaction(req)
-
-	resp := TransactionResponse{
-		TxID:    txid.String(),
-		Status:  status,
-		Message: message,
-	}
-
-	// Convert the response struct to a JSON string for logging
-	respJson, err := json.Marshal(resp)
-	if err != nil {
-		log.Printf("Failed to marshal response: %v", err)
-	} else {
-		log.Println("Response: ", string(respJson))
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-}
-
-func (s *API) HandleTransactionSizeEstimate(w http.ResponseWriter, r *http.Request) {
-	// Parse the request body for parameters (spend amount, recipient address, etc.)
-	var req TransactionRequest
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-
-	// Call the transaction size estimator function
-	txSize, err := transaction.HttpCalculateTransactionSize(s.Wallet, req.SpendAmount, req.RecipientAddress, req.PriorityRate)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to estimate transaction size: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Send back the transaction size
-	resp := map[string]int{
-		"txSize": txSize,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-}
-
-func (s *API) performHttpTransaction(req TransactionRequest) (chainhash.Hash, string, string) {
-	enableRBF := req.EnableRBF
-	var txid chainhash.Hash
-	var status, message string
-
-	switch req.Choice {
-	case 1:
-		// New transaction
-		txid, verified, err := transaction.HttpCheckBalanceAndCreateTransaction(s.Wallet, s.ChainClient.CS, enableRBF, req.SpendAmount, req.RecipientAddress, s.PrivPass, req.PriorityRate)
-		if err != nil {
-			message = fmt.Sprintf("Error creating or broadcasting transaction: %v", err)
-			status = "failed"
-		} else if verified {
-			message = "Transaction successfully broadcasted and verified in the mempool"
-			status = "success"
-		} else {
-			message = "Transaction broadcasted. Please check the mempool in a few seconds to see if it is confirmed."
-			status = "pending"
-		}
-
-		return txid, status, message
-
-	case 2:
-		// RBF (Replace-By-Fee) transaction
-		var mempoolSpaceConfig = transaction.ElectrumConfig{
-			ServerAddr: "electrum.blockstream.info:50002",
-			UseSSL:     true,
-		}
-		client, err := transaction.CreateElectrumClient(mempoolSpaceConfig)
-		if err != nil {
-			return chainhash.Hash{}, "failed", fmt.Sprintf("Failed to create Electrum client: %v", err)
-		}
-		txid, verified, err := transaction.ReplaceTransactionWithHigherFee(s.Wallet, s.ChainClient.CS, req.OriginalTxID, req.NewFeeRate, client, s.PrivPass)
-		if err != nil {
-			message = fmt.Sprintf("Error performing RBF transaction: %v", err)
-			status = "failed"
-		} else if verified {
-			message = "RBF transaction successfully broadcasted and verified in the mempool"
-			status = "success"
-		} else {
-			message = "RBF transaction broadcasted. Please check the mempool in a few seconds."
-			status = "pending"
-		}
-		return txid, status, message
-
-	default:
-		message = "Invalid transaction choice"
-		status = "failed"
-	}
-
-	return txid, status, message
-}
 
 func (s *API) HandleChallengeRequest(w http.ResponseWriter, _ *http.Request) {
 	log.Println("Challenge requested...")
@@ -384,7 +240,6 @@ func HashAndCompare(data []byte, hash string) (bool, []byte) {
 	return hex.EncodeToString(h[:]) == hash, h[:]
 }
 
-// Function to generate JWT token (called upon user login or request)
 func GenerateJWT(userID string) (string, error) {
 	expirationTime := time.Now().Add(15 * time.Minute)
 	claims := &Claims{
@@ -409,71 +264,4 @@ func GenerateJWT(userID string) (string, error) {
 	log.Println("Generated JWT token:", tokenString)
 
 	return tokenString, nil
-}
-
-func (s *API) CORSMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		allowedOrigin := viper.GetString("allowed_origin")
-		w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	}
-}
-
-func (a *API) JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		log.Println("Checking Token.")
-
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			log.Println("Authorization header missing.")
-			http.Error(w, "Unauthorized: Authorization header missing", http.StatusUnauthorized)
-			return
-		}
-
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			log.Println("Invalid Authorization header format.")
-			http.Error(w, "Unauthorized: Invalid token format", http.StatusUnauthorized)
-			return
-		}
-
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-
-		log.Println("token string: ", tokenString)
-
-		claims := &Claims{}
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			return GetJWTKey(), nil
-		})
-
-		if err != nil {
-			if validationErr, ok := err.(*jwt.ValidationError); ok {
-				if validationErr.Errors == jwt.ValidationErrorExpired {
-					log.Println("Token expired.")
-					http.Error(w, "Token expired", http.StatusUnauthorized)
-					return
-				}
-			}
-			log.Println("Invalid token:", err)
-			http.Error(w, "Unauthorized: Invalid token", http.StatusUnauthorized)
-			return
-		}
-
-		if !token.Valid {
-			log.Println("Token is not valid.")
-			http.Error(w, "Unauthorized: Invalid token", http.StatusUnauthorized)
-			return
-		}
-
-		log.Println("Token is valid.")
-		next.ServeHTTP(w, r)
-	}
 }

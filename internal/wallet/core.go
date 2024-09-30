@@ -12,7 +12,6 @@ import (
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/api"
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/logger"
-	"github.com/Maphikza/btc-wallet-btcsuite.git/lib/utils"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -153,7 +152,7 @@ func initializeWallet(seedPhrase string, pubPass []byte, privPass []byte, baseDi
 
 	// TODO: Remove this once all testing it done.
 	if forceNewWallet {
-		if err := utils.CleanupExistingData(neutrinoDBPath, walletDBPath); err != nil {
+		if err := CleanupExistingData(neutrinoDBPath, walletDBPath); err != nil {
 			return nil, nil, nil, nil, nil, fmt.Errorf("error cleaning up existing data: %v", err)
 		}
 		log.Println("Existing data cleaned up successfully")
@@ -236,25 +235,16 @@ func initializeWallet(seedPhrase string, pubPass []byte, privPass []byte, baseDi
 		log.Fatalf("Error deriving account key: %v", err)
 	}
 
-	// Print master fingerprint
-	masterFingerprint, err := getMasterFingerprint(rootKey)
-	if err != nil {
-		log.Fatalf("Error getting master fingerprint: %v", err)
-	}
-	log.Printf("Master Fingerprint: %x", masterFingerprint)
-
 	// Get xpub and zpub
-	xpub, err := getExtendedPubKey(accountKey, []byte{0x04, 0x88, 0xB2, 0x1E})
+	_, err = GetExtendedPubKey(accountKey, []byte{0x04, 0x88, 0xB2, 0x1E})
 	if err != nil {
 		log.Fatalf("Error getting xpub: %v", err)
 	}
-	log.Printf("xpub: %s", xpub)
 
-	zpub, err := getExtendedPubKey(accountKey, []byte{0x04, 0xB2, 0x47, 0x46})
+	_, err = GetExtendedPubKey(accountKey, []byte{0x04, 0xB2, 0x47, 0x46})
 	if err != nil {
 		log.Fatalf("Error getting zpub: %v", err)
 	}
-	log.Printf("zpub: %s", zpub)
 
 	log.Println("Initializing Neutrino chain service")
 	db, err := walletdb.Create("bdb", filepath.Join(neutrinoDBPath, "neutrino.db"), true, time.Second*60)
@@ -324,6 +314,13 @@ func initializeWallet(seedPhrase string, pubPass []byte, privPass []byte, baseDi
 	}
 
 	return w, chainParams, chainService, chainClient, db, nil
+}
+
+func isBirthdayToday(birthday time.Time) bool {
+	today := time.Now()
+	return birthday.Month() == today.Month() &&
+		birthday.Day() == today.Day() &&
+		birthday.Year() == today.Year()
 }
 
 // StartHTTPSServer starts the HTTPS server, generates the certificate if necessary, and trusts the certificate based on the OS

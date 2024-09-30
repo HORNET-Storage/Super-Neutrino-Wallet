@@ -18,6 +18,8 @@ import (
 
 var Store *graviton.Store
 
+const ChallengeTreeName = "challenges"
+
 const (
 	LastScannedBlockKey    = "last_scanned_block_height"
 	AddressStatusAvailable = "available"
@@ -25,15 +27,6 @@ const (
 	AddressStatusUsed      = "used"
 	MinAvailableAddresses  = 10
 )
-
-type Address struct {
-	Index       uint
-	Address     string
-	Status      string
-	AllocatedAt *time.Time
-	UsedAt      *time.Time
-	BlockHeight *uint32
-}
 
 func InitDB(dbPath string) error {
 	var err error
@@ -465,18 +458,6 @@ func SaveTransactionToDB(tx *wire.MsgTx) (chainhash.Hash, error) {
 
 	return tx.TxHash(), nil
 }
-
-type Challenge struct {
-	Challenge string    `json:"challenge"`
-	Hash      string    `json:"hash"`
-	Status    string    `json:"status"` // "unused", "used", "expired"
-	Npub      string    `json:"npub"`
-	CreatedAt time.Time `json:"created_at"`
-	UsedAt    time.Time `json:"used_at,omitempty"`
-	ExpiredAt time.Time `json:"expired_at,omitempty"`
-}
-
-const ChallengeTreeName = "challenges"
 
 // SaveChallenge saves the generated challenge to Graviton
 func SaveChallenge(tree *graviton.Tree, challenge Challenge) error {

@@ -24,3 +24,8 @@ type TransactionResponse struct {
 	Status  string `json:"status"`
 	Message string `json:"message,omitempty"`
 }
+
+type Config struct {
+	BackendURL string   `mapstructure:"backend_url"`
+	AddPeers   []string `mapstructure:"add_peers"`
+}
