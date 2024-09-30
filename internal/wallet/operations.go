@@ -5,15 +5,12 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/ipc"
-	transaction "github.com/Maphikza/btc-wallet-btcsuite.git/lib/transaction"
-	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcwallet/chain"
 	"github.com/lightninglabs/neutrino"
@@ -97,44 +94,6 @@ func (s *WalletServer) serverLoop() error {
 	}
 }
 
-func setWalletSync(synced bool) error {
-	err := viper.ReadInConfig()
-	if err != nil {
-		log.Printf("Error reading viper config: %s", err.Error())
-	}
-
-	if !viper.IsSet("wallet_synced") {
-		viper.Set("wallet_synced", synced)
-	} else {
-		viper.Set("wallet_synced", synced)
-	}
-
-	err = viper.WriteConfig()
-	if err != nil {
-		return fmt.Errorf("error writing config file: %w", err)
-	}
-	return nil
-}
-
-func setWalletLive(live bool) error {
-	err := viper.ReadInConfig()
-	if err != nil {
-		log.Printf("Error reading viper config: %s", err.Error())
-	}
-
-	if !viper.IsSet("wallet_live") {
-		viper.Set("wallet_live", live)
-	} else {
-		viper.Set("wallet_live", live)
-	}
-
-	err = viper.WriteConfig()
-	if err != nil {
-		return fmt.Errorf("error writing config file: %w", err)
-	}
-	return nil
-}
-
 func (s *WalletServer) handleCommand(command string) error {
 	if s.API.HttpMode {
 		return fmt.Errorf("terminal commands are not available in HTTP mode")
@@ -204,372 +163,6 @@ func listenForUserCommands(commandChannel chan<- string) {
 	}
 }
 
-func (s *WalletServer) handleGetWalletBalance() (interface{}, error) {
-	balance, err := GetWalletBalance(s.API.Wallet)
-	if err != nil {
-		return nil, err
-	}
-	log.Printf("Wallet balance retrieved: %d\n", balance)
-	return map[string]int64{"balance": balance}, nil
-}
-
-func (s *WalletServer) handleEstimateTransactionSize(args []string) (interface{}, error) {
-	if len(args) != 3 {
-		return nil, fmt.Errorf("invalid number of arguments for estimate-transaction-size")
-	}
-	spendAmount, err := strconv.ParseInt(args[0], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid spend amount: %v", err)
-	}
-	recipientAddress := args[1]
-	feeRate, err := strconv.Atoi(args[2])
-	if err != nil {
-		return nil, fmt.Errorf("invalid fee rate: %v", err)
-	}
-
-	size, err := EstimateTransactionSize(s.API.Wallet, spendAmount, recipientAddress, feeRate)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]int{"size": size}, nil
-}
-
-func (s *WalletServer) handleGetTransactionHistory() (interface{}, error) {
-	history, err := GetTransactionHistory(s.API.Wallet, s.API.Name)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]interface{}{"transactions": history}, nil
-}
-
-func (s *WalletServer) handleGetReceiveAddresses() (interface{}, error) {
-	// Retrieve receive and change addresses
-	receiveAddresses, _, err := walletstatedb.RetrieveAddresses()
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert []btcutil.Address to []string
-	receiveAddressStrings := make([]string, len(receiveAddresses))
-	for i, addr := range receiveAddresses {
-		receiveAddressStrings[i] = addr.String() // Convert each btcutil.Address to its string representation
-	}
-
-	log.Printf("Receive addresses retrieved: %v\n", receiveAddressStrings)
-	return map[string][]string{"addresses": receiveAddressStrings}, nil
-}
-
-func (s *WalletServer) viewSeedPhrase() error {
-	engaged = true
-	defer func() { engaged = false }()
-
-	return viewSeedPhrase()
-}
-
-func (s *WalletServer) exitWalletCMD() error {
-	exitMutex.Lock()
-	defer exitMutex.Unlock()
-
-	if exiting {
-		return nil // Exit is already in progress, do nothing
-	}
-
-	err := viper.ReadInConfig()
-	if err != nil {
-		log.Printf("Error reading viper config: %s", err.Error())
-	}
-
-	engaged = true
-	defer func() { engaged = false }()
-
-	// Set wallet_synced and wallet_live to false before initiating the shutdown
-	err = setWalletSync(false)
-	if err != nil {
-		log.Printf("Error setting wallet synced state to false: %v", err)
-	}
-
-	err = setWalletLive(false)
-	if err != nil {
-		log.Printf("Error setting wallet live state: %v", err)
-	}
-
-	exiting = true
-	fmt.Println("Initiating graceful shutdown...")
-
-	if err := gracefulShutdown(); err != nil {
-		return fmt.Errorf("error during shutdown: %v", err)
-	}
-
-	return nil
-}
-
-func (s *WalletServer) exitWallet() error {
-	exitMutex.Lock()
-	defer exitMutex.Unlock()
-
-	if exiting {
-		return nil // Exit is already in progress, do nothing
-	}
-
-	engaged = true
-	defer func() { engaged = false }()
-
-	fmt.Print("Are you sure you want to exit? (y/n): ")
-	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Scan()
-	confirmation := strings.ToLower(strings.TrimSpace(scanner.Text()))
-
-	if confirmation == "y" {
-		exiting = true
-		err := setWalletLive(false)
-		if err != nil {
-			log.Printf("Error setting wallet live state: %v", err)
-		}
-		fmt.Println("Initiating graceful shutdown...")
-		if err := gracefulShutdown(); err != nil {
-			return fmt.Errorf("error during shutdown: %v", err)
-		}
-	} else {
-		fmt.Println("Shutdown cancelled.")
-	}
-	return nil
-}
-
-func (s *WalletServer) performTransaction() error {
-	// Implement your transaction logic here
-	// This is a placeholder for your existing transaction code
-	log.Println("Performing transaction...")
-
-	scanner := bufio.NewScanner(os.Stdin)
-	enableRBF := true
-	transactionComplete := false
-
-	for !transactionComplete {
-		engaged = true
-		fmt.Println("Choose an action:")
-		fmt.Println("1. New transaction")
-		fmt.Println("2. RBF (Replace-By-Fee) transaction")
-		fmt.Println("3. New transaction with file hash")
-		fmt.Println("4. Get Receive Address")
-		fmt.Println("5. Exit tx")
-		fmt.Print("\nEnter your choice (1, 2, 3, 4, or 5): ")
-
-		scanner.Scan()
-		choice := strings.TrimSpace(scanner.Text())
-
-		switch choice {
-		case "1":
-			transacting = true
-			log.Println("Creating new transaction")
-			// Ask for recipient address
-			fmt.Print("Enter the recipient address: ")
-			scanner.Scan()
-			recipientAddress := strings.TrimSpace(scanner.Text())
-
-			// Validate the recipient address
-			_, err := btcutil.DecodeAddress(recipientAddress, s.API.Wallet.ChainParams())
-			if err != nil {
-				log.Printf("Invalid recipient address: %v", err)
-				continue
-			}
-
-			// Ask for spend amount
-			fmt.Print("Enter the spend amount (satoshis): ")
-			scanner.Scan()
-			var spendAmount int64
-			_, err = fmt.Sscan(scanner.Text(), &spendAmount)
-			if err != nil {
-				log.Printf("Error reading spend amount: %v", err)
-				continue
-			}
-
-			// Call the transaction creation function with the new recipient address parameter
-			txid, verified, err := transaction.CheckBalanceAndCreateTransaction(s.API.Wallet, s.API.ChainClient.CS, enableRBF, spendAmount, recipientAddress, s.API.PrivPass)
-			if err != nil {
-				log.Println("Closing in 1 minute...")
-				time.Sleep(1 * time.Minute)
-				return fmt.Errorf("error creating or broadcasting transaction: %v", err)
-			}
-
-			if verified {
-				log.Printf("Transaction successfully broadcasted with TXID: %s", txid)
-			} else {
-				log.Printf("Transaction with TXID: %s failed.", txid)
-			}
-
-			transactionComplete = true
-
-		case "2":
-			transacting = true
-			var mempoolSpaceConfig = transaction.ElectrumConfig{
-				ServerAddr: "electrum.blockstream.info:50002",
-				UseSSL:     true,
-			}
-			client, err := transaction.CreateElectrumClient(mempoolSpaceConfig)
-			if err != nil {
-				log.Fatalf("Failed to create Electrum client: %v", err)
-			}
-			log.Println("Performing RBF transaction")
-			fmt.Print("Enter the original transaction ID: ")
-			scanner.Scan()
-			originalTxID := strings.TrimSpace(scanner.Text())
-
-			fmt.Print("Enter new fee rate (sat/vB): ")
-			scanner.Scan()
-			var newFeeRate int64
-			_, err = fmt.Sscan(scanner.Text(), &newFeeRate)
-			if err != nil {
-				log.Printf("Error reading new fee rate: %v", err)
-				continue
-			}
-
-			newTxID, verified, err := transaction.ReplaceTransactionWithHigherFee(s.API.Wallet, s.API.ChainClient.CS, originalTxID, newFeeRate, client, s.API.PrivPass)
-			if err != nil {
-				log.Println("Closing in 1 minute...")
-				time.Sleep(1 * time.Minute)
-				return fmt.Errorf("error performing RBF transaction: %v", err)
-			}
-
-			if verified {
-				log.Printf("RBF transaction successfully broadcasted with new TXID: %s", newTxID)
-			} else {
-				log.Printf("Transaction with TXID: %s failed.", newTxID)
-			}
-
-			transactionComplete = true
-
-		case "3":
-			transacting = true
-			log.Println("Creating new transaction with file hash")
-			// Ask for recipient address
-			fmt.Print("Enter the recipient address: ")
-			scanner.Scan()
-			recipientAddress := strings.TrimSpace(scanner.Text())
-
-			// Validate the recipient address
-			_, err := btcutil.DecodeAddress(recipientAddress, s.API.Wallet.ChainParams())
-			if err != nil {
-				log.Printf("Invalid recipient address: %v", err)
-				continue
-			}
-
-			// Ask for spend amount
-			fmt.Print("Enter the spend amount (satoshis): ")
-			scanner.Scan()
-			var spendAmount int64
-			_, err = fmt.Sscan(scanner.Text(), &spendAmount)
-			if err != nil {
-				log.Printf("Error reading spend amount: %v", err)
-				continue
-			}
-
-			// Ask for file path
-			fmt.Print("Enter the path to the file you want to hash: ")
-			scanner.Scan()
-			filePath := strings.TrimSpace(scanner.Text())
-
-			// Hash the file
-			fileHash, err := hashFile(filePath)
-			if err != nil {
-				log.Printf("Error hashing file: %v", err)
-				continue
-			}
-
-			// Display the file hash and ask for confirmation
-			fmt.Printf("File hash: %s\n", fileHash)
-			fmt.Print("Do you want to proceed with this hash? (y/n): ")
-			scanner.Scan()
-			confirmation := strings.ToLower(strings.TrimSpace(scanner.Text()))
-
-			if confirmation != "y" && confirmation != "yes" {
-				log.Println("Transaction cancelled.")
-				continue
-			}
-
-			// Call the transaction creation function with the new recipient address and file hash parameters
-			txid, verified, err := transaction.CreateTransactionWithHash(s.API.Wallet, s.API.ChainClient.CS, enableRBF, spendAmount, recipientAddress, fileHash, s.API.PrivPass)
-			if err != nil {
-				log.Println("Closing in 1 minute...")
-				time.Sleep(1 * time.Minute)
-				return fmt.Errorf("error creating or broadcasting transaction with file hash: %v", err)
-			}
-
-			if verified {
-				log.Printf("Transaction with file hash successfully broadcasted with TXID: %s", txid)
-			} else {
-				log.Printf("Transaction with TXID: %s failed.", txid)
-			}
-
-			transactionComplete = true
-		case "4":
-			transacting = true
-			_, err := walletstatedb.PrintAndCopyReceiveAddresses()
-			if err != nil {
-				return fmt.Errorf("error getting receive address: %v", err)
-			}
-			transactionComplete = true
-
-		case "5":
-			log.Println("Exiting tx...")
-			transactionComplete = true
-		default:
-			log.Println("Invalid choice. Please enter 1, 2, 3, 4, or 5.")
-		}
-		engaged = false
-		transacting = false
-	}
-
-	return nil
-}
-
-func (s *WalletServer) NewTransactionAPI(recipient string, amountStr, feeRateStr string) (map[string]interface{}, error) {
-	amount, err := strconv.ParseInt(amountStr, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid amount: %v", err)
-	}
-
-	feeRate, err := strconv.ParseInt(feeRateStr, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid fee rate: %v", err)
-	}
-
-	txHash, verified, err := transaction.HttpCheckBalanceAndCreateTransaction(s.API.Wallet, s.API.ChainClient.CS, true, amount, recipient, s.API.PrivPass, int(feeRate))
-	if err != nil {
-		return nil, fmt.Errorf("transaction failed: %v", err)
-	}
-
-	return map[string]interface{}{
-		"txHash":   txHash.String(),
-		"verified": verified,
-	}, nil
-}
-
-func (s *WalletServer) RBFTransactionAPI(originalTxID, newFeeRateStr string) (map[string]interface{}, error) {
-	newFeeRate, err := strconv.ParseInt(newFeeRateStr, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid fee rate: %v", err)
-	}
-
-	client, err := transaction.CreateElectrumClient(transaction.ElectrumConfig{
-		ServerAddr: "electrum.blockstream.info:50002",
-		UseSSL:     true,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Electrum client: %v", err)
-	}
-	defer client.Shutdown()
-
-	newTxID, verified, err := transaction.ReplaceTransactionWithHigherFee(s.API.Wallet, s.API.ChainClient.CS, originalTxID, newFeeRate, client, s.API.PrivPass)
-	if err != nil {
-		return nil, fmt.Errorf("RBF transaction failed: %v", err)
-	}
-
-	return map[string]interface{}{
-		"newTxID":  newTxID.String(),
-		"verified": verified,
-	}, nil
-}
-
 func (s *WalletServer) syncBlockchain() {
 	log.Println("Starting syncing process...")
 
@@ -635,4 +228,66 @@ func initializeChainClient(chainParams *chaincfg.Params, chainService *neutrino.
 		return nil, fmt.Errorf("error starting chain client: %v", err)
 	}
 	return chainClient, nil
+}
+
+func setWalletSync(synced bool) error {
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Printf("Error reading viper config: %s", err.Error())
+	}
+
+	if !viper.IsSet("wallet_synced") {
+		viper.Set("wallet_synced", synced)
+	} else {
+		viper.Set("wallet_synced", synced)
+	}
+
+	err = viper.WriteConfig()
+	if err != nil {
+		return fmt.Errorf("error writing config file: %w", err)
+	}
+	return nil
+}
+
+func setWalletLive(live bool) error {
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Printf("Error reading viper config: %s", err.Error())
+	}
+
+	if !viper.IsSet("wallet_live") {
+		viper.Set("wallet_live", live)
+	} else {
+		viper.Set("wallet_live", live)
+	}
+
+	err = viper.WriteConfig()
+	if err != nil {
+		return fmt.Errorf("error writing config file: %w", err)
+	}
+	return nil
+}
+
+func (s *WalletServer) viewSeedPhrase() error {
+	engaged = true
+	defer func() { engaged = false }()
+
+	return viewSeedPhrase()
+}
+
+func (s *WalletServer) handleGetReceiveAddresses() (interface{}, error) {
+	// Retrieve receive and change addresses
+	receiveAddresses, _, err := walletstatedb.RetrieveAddresses()
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert []btcutil.Address to []string
+	receiveAddressStrings := make([]string, len(receiveAddresses))
+	for i, addr := range receiveAddresses {
+		receiveAddressStrings[i] = addr.String() // Convert each btcutil.Address to its string representation
+	}
+
+	log.Printf("Receive addresses retrieved: %v\n", receiveAddressStrings)
+	return map[string][]string{"addresses": receiveAddressStrings}, nil
 }
