@@ -12,6 +12,7 @@ import (
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
 	transaction "github.com/Maphikza/btc-wallet-btcsuite.git/lib/transaction"
 	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcwallet/wallet"
 	"github.com/spf13/viper"
 )
 
@@ -355,4 +356,28 @@ func (s *WalletServer) RBFTransactionAPI(originalTxID, newFeeRateStr string) (ma
 		"newTxID":  newTxID.String(),
 		"verified": verified,
 	}, nil
+}
+
+func EstimateTransactionSize(w *wallet.Wallet, spendAmount int64, recipientAddress string, feeRate int) (int, error) {
+	return transaction.HttpCalculateTransactionSize(w, spendAmount, recipientAddress, feeRate)
+}
+
+func GetTransactionHistory(w *wallet.Wallet, walletName string) ([]map[string]interface{}, error) {
+	transactions, err := w.ListAllTransactions()
+	if err != nil {
+		return nil, fmt.Errorf("error listing transactions: %v", err)
+	}
+
+	var result []map[string]interface{}
+
+	for _, tx := range transactions {
+		transaction := map[string]interface{}{
+			"txid":   tx.TxID,
+			"date":   time.Unix(tx.Time, 0).Format(time.RFC3339),
+			"amount": fmt.Sprintf("%.8f", tx.Amount),
+		}
+		result = append(result, transaction)
+	}
+
+	return result, nil
 }
