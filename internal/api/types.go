@@ -1,5 +1,24 @@
 package api
 
+import (
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcwallet/chain"
+	"github.com/btcsuite/btcwallet/wallet"
+	"github.com/btcsuite/btcwallet/walletdb"
+	"github.com/lightninglabs/neutrino"
+)
+
+type API struct {
+	Wallet       *wallet.Wallet
+	ChainParams  *chaincfg.Params
+	ChainService *neutrino.ChainService
+	ChainClient  *chain.NeutrinoClient
+	NeutrinoDB   walletdb.DB
+	PrivPass     []byte
+	Name         string
+	HttpMode     bool
+}
+
 type TransactionRequest struct {
 	Choice           int    `json:"choice"`
 	RecipientAddress string `json:"recipient_address"`
