@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/ipc"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcwallet/chain"
+	"github.com/joho/godotenv"
 	"github.com/lightninglabs/neutrino"
 	"github.com/spf13/viper"
 )
@@ -290,4 +292,38 @@ func (s *WalletServer) handleGetReceiveAddresses() (interface{}, error) {
 
 	log.Printf("Receive addresses retrieved: %v\n", receiveAddressStrings)
 	return map[string][]string{"addresses": receiveAddressStrings}, nil
+}
+
+func viewSeedPhrase() error {
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Print("Enter the name of the wallet to view seed phrase: ")
+	scanner.Scan()
+	walletName := strings.TrimSpace(scanner.Text())
+
+	envFile := filepath.Join(walletDir, walletName+".env")
+	err := godotenv.Load(envFile)
+	if err != nil {
+		return fmt.Errorf("error loading wallet file: %v", err)
+	}
+
+	encryptedSeedPhrase := os.Getenv("ENCRYPTED_SEED_PHRASE")
+	if encryptedSeedPhrase == "" {
+		return fmt.Errorf("encrypted seed phrase not found")
+	}
+
+	fmt.Print("Enter your wallet password: ")
+	reader := bufio.NewReader(os.Stdin)
+	password, _ := reader.ReadString('\n')
+	password = strings.TrimSpace(password)
+
+	seedPhrase, err := decrypt(encryptedSeedPhrase, password)
+	if err != nil {
+		return fmt.Errorf("error decrypting seed phrase: %v", err)
+	}
+
+	fmt.Println("Your seed phrase is:")
+	fmt.Println(seedPhrase)
+	fmt.Println("Please ensure you store this securely and never share it with anyone.")
+
+	return nil
 }

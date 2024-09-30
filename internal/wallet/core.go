@@ -317,6 +317,13 @@ func initializeWallet(seedPhrase string, pubPass []byte, privPass []byte, baseDi
 	return w, chainParams, chainService, chainClient, db, nil
 }
 
+func isBirthdayToday(birthday time.Time) bool {
+	today := time.Now()
+	return birthday.Month() == today.Month() &&
+		birthday.Day() == today.Day() &&
+		birthday.Year() == today.Year()
+}
+
 // StartHTTPSServer starts the HTTPS server, generates the certificate if necessary, and trusts the certificate based on the OS
 func (s *WalletServer) StartHTTPSServer() error {
 	// Start the background sync process

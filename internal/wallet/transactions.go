@@ -2,7 +2,10 @@ package wallet
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strconv"
@@ -380,4 +383,27 @@ func GetTransactionHistory(w *wallet.Wallet, walletName string) ([]map[string]in
 	}
 
 	return result, nil
+}
+
+func hashFile(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("error opening file: %v", err)
+	}
+	defer file.Close()
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", fmt.Errorf("error hashing file: %v", err)
+	}
+
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func GetWalletBalance(w *wallet.Wallet) (int64, error) {
+	balance, err := w.CalculateBalance(1) // Use 1 confirmation
+	if err != nil {
+		return 0, fmt.Errorf("error calculating balance: %v", err)
+	}
+	return int64(balance), nil
 }

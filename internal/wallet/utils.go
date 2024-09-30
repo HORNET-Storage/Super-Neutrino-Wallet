@@ -1,23 +1,16 @@
 package wallet
 
 import (
-	"bufio"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
-	"github.com/btcsuite/btcwallet/wallet"
-	"github.com/joho/godotenv"
 	"golang.org/x/crypto/ripemd160"
 )
 
@@ -84,68 +77,11 @@ func GetExtendedPubKey(extendedKey *hdkeychain.ExtendedKey, version []byte) (str
 	return clonedKey.String(), nil
 }
 
-// Function to hash a file
-func hashFile(filePath string) (string, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return "", fmt.Errorf("error opening file: %v", err)
-	}
-	defer file.Close()
-
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", fmt.Errorf("error hashing file: %v", err)
-	}
-
-	return hex.EncodeToString(hash.Sum(nil)), nil
-}
-
 func estimateBlockHeight(targetDate time.Time) int32 {
 	genesisDate := time.Date(2009, time.January, 3, 18, 15, 5, 0, time.UTC)
 	daysSinceGenesis := targetDate.Sub(genesisDate).Hours() / 24
 	estimatedHeight := int32(daysSinceGenesis * 144)
 	return estimatedHeight
-}
-
-func isBirthdayToday(birthday time.Time) bool {
-	today := time.Now()
-	return birthday.Month() == today.Month() &&
-		birthday.Day() == today.Day() &&
-		birthday.Year() == today.Year()
-}
-
-func viewSeedPhrase() error {
-	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Print("Enter the name of the wallet to view seed phrase: ")
-	scanner.Scan()
-	walletName := strings.TrimSpace(scanner.Text())
-
-	envFile := filepath.Join(walletDir, walletName+".env")
-	err := godotenv.Load(envFile)
-	if err != nil {
-		return fmt.Errorf("error loading wallet file: %v", err)
-	}
-
-	encryptedSeedPhrase := os.Getenv("ENCRYPTED_SEED_PHRASE")
-	if encryptedSeedPhrase == "" {
-		return fmt.Errorf("encrypted seed phrase not found")
-	}
-
-	fmt.Print("Enter your wallet password: ")
-	reader := bufio.NewReader(os.Stdin)
-	password, _ := reader.ReadString('\n')
-	password = strings.TrimSpace(password)
-
-	seedPhrase, err := decrypt(encryptedSeedPhrase, password)
-	if err != nil {
-		return fmt.Errorf("error decrypting seed phrase: %v", err)
-	}
-
-	fmt.Println("Your seed phrase is:")
-	fmt.Println(seedPhrase)
-	fmt.Println("Please ensure you store this securely and never share it with anyone.")
-
-	return nil
 }
 
 func gracefulShutdown() error {
@@ -164,20 +100,4 @@ func gracefulShutdown() error {
 	time.Sleep(2 * time.Second) // Give user time to read the message
 	os.Exit(0)
 	return nil
-}
-
-func generateRandomPassphrase(length int) (string, error) {
-	bytes := make([]byte, length)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
-}
-
-func GetWalletBalance(w *wallet.Wallet) (int64, error) {
-	balance, err := w.CalculateBalance(1) // Use 1 confirmation
-	if err != nil {
-		return 0, fmt.Errorf("error calculating balance: %v", err)
-	}
-	return int64(balance), nil
 }

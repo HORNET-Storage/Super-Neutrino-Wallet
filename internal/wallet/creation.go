@@ -2,6 +2,8 @@ package wallet
 
 import (
 	"bufio"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"strings"
@@ -302,4 +304,12 @@ func ImportWalletAPI(walletName, mnemonic, password, birthdate, pubKey, apiKey s
 
 func isValidMnemonic(mnemonic string) bool {
 	return bip39.IsMnemonicValid(mnemonic)
+}
+
+func generateRandomPassphrase(length int) (string, error) {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
 }
