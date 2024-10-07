@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/ipc"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/logger"
 	setupwallet "github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet"
+	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -80,6 +82,7 @@ func init() {
 	rootCmd.AddCommand(getTransactionHistoryCmd)
 	rootCmd.AddCommand(getReceiveAddressesCmd)
 	rootCmd.AddCommand(exitWalletCmd)
+	rootCmd.AddCommand(deleteWalletCmd)
 }
 
 func initConfig() {
@@ -392,5 +395,51 @@ var exitWalletCmd = &cobra.Command{
 		log.Println("Exit Result: ", result)
 
 		json.NewEncoder(os.Stdout).Encode(result)
+	},
+}
+
+var deleteWalletCmd = &cobra.Command{
+	Use:   "delete [wallet-name] [password]",
+	Short: "Delete an existing wallet",
+	Long: `Delete an existing wallet with the given name after verifying the password.
+	This action is irreversible, so proceed with caution.`,
+	Args: cobra.ExactArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		walletName := args[0]
+		password := args[1]
+
+		// Load the wallet's .env file
+		walletDir := viper.GetString("wallet_dir")
+		envFile := filepath.Join(walletDir, walletName+".env")
+		err := godotenv.Load(envFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading wallet file: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Retrieve the encrypted seed phrase
+		encryptedSeedPhrase := os.Getenv("ENCRYPTED_SEED_PHRASE")
+		if encryptedSeedPhrase == "" {
+			fmt.Fprintf(os.Stderr, "Encrypted seed phrase not found\n")
+			os.Exit(1)
+		}
+
+		// Decrypt the seed phrase with the provided password
+		_, err = setupwallet.Decrypt(encryptedSeedPhrase, password)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error decrypting seed phrase: incorrect password or decryption failed\n")
+			os.Exit(1)
+		}
+
+		// Confirm deletion will be handled by the frontend
+
+		// Proceed with deleting the wallet files
+		err = setupwallet.DeleteWalletFiles(walletName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error deleting wallet files: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println("Wallet deleted successfully.")
 	},
 }

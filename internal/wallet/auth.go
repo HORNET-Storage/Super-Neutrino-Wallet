@@ -183,7 +183,7 @@ func encrypt(plaintext string, password string) string {
 }
 
 // TODO: Remove if no longer necessary
-func decrypt(ciphertext string, password string) (string, error) {
+func Decrypt(ciphertext string, password string) (string, error) {
 	parts := strings.Split(ciphertext, ":")
 	if len(parts) != 3 {
 		return "", fmt.Errorf("invalid ciphertext format")
