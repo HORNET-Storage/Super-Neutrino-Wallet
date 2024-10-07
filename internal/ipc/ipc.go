@@ -6,11 +6,14 @@ import (
 	"io"
 	"net"
 	"os"
+	"runtime"
 )
 
-const socketPath = "/tmp/btc-wallet.sock"
+const unixSocketPath = "/tmp/btc-wallet.sock"
+const windowsSocketPort = ":7070" // You can change the port if needed
 
 var commandID int
+var osType = runtime.GOOS // Get the operating system type
 
 func generateCommandID() int {
 	commandID++
@@ -18,17 +21,25 @@ func generateCommandID() int {
 }
 
 func NewServer() (*Server, error) {
-	// Check if the socket file already exists
-	if _, err := os.Stat(socketPath); err == nil {
-		// Socket file exists, try to remove it
-		err = os.Remove(socketPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to remove existing socket file: %v", err)
+	var listener net.Listener
+	var err error
+
+	if osType == "windows" {
+		// On Windows, use TCP socket
+		listener, err = net.Listen("tcp", windowsSocketPort)
+	} else {
+		// On Unix-like systems, use Unix socket
+		// Check if the Unix socket file already exists
+		if _, err := os.Stat(unixSocketPath); err == nil {
+			// Remove existing Unix socket file
+			err = os.Remove(unixSocketPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to remove existing socket file: %v", err)
+			}
 		}
+		listener, err = net.Listen("unix", unixSocketPath)
 	}
 
-	// Create a new Unix socket
-	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		return nil, err
 	}
@@ -36,13 +47,40 @@ func NewServer() (*Server, error) {
 	server := &Server{
 		listener:    listener,
 		commands:    make(chan Command),
-		connections: make(map[int]net.Conn), // Initialize the connections map here
+		connections: make(map[int]net.Conn),
 	}
 
 	go server.accept()
 
 	return server, nil
 }
+
+// func NewServer() (*Server, error) {
+// 	// Check if the socket file already exists
+// 	if _, err := os.Stat(socketPath); err == nil {
+// 		// Socket file exists, try to remove it
+// 		err = os.Remove(socketPath)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("failed to remove existing socket file: %v", err)
+// 		}
+// 	}
+
+// 	// Create a new Unix socket
+// 	listener, err := net.Listen("unix", socketPath)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	server := &Server{
+// 		listener:    listener,
+// 		commands:    make(chan Command),
+// 		connections: make(map[int]net.Conn), // Initialize the connections map here
+// 	}
+
+// 	go server.accept()
+
+// 	return server, nil
+// }
 
 func (s *Server) accept() {
 	for {
@@ -109,7 +147,7 @@ func (s *Server) Close() error {
 }
 
 func NewClient() (*Client, error) {
-	conn, err := net.Dial("unix", socketPath)
+	conn, err := net.Dial("unix", unixSocketPath)
 	if err != nil {
 		return nil, err
 	}
