@@ -316,7 +316,7 @@ func viewSeedPhrase() error {
 	password, _ := reader.ReadString('\n')
 	password = strings.TrimSpace(password)
 
-	seedPhrase, err := decrypt(encryptedSeedPhrase, password)
+	seedPhrase, err := Decrypt(encryptedSeedPhrase, password)
 	if err != nil {
 		return fmt.Errorf("error decrypting seed phrase: %v", err)
 	}

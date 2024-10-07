@@ -59,22 +59,22 @@ func loadWallet(walletName string) (string, string, string, time.Time, error) {
 	password, _ := reader.ReadString('\n')
 	password = strings.TrimSpace(password)
 
-	seedPhrase, err := decrypt(encryptedSeedPhrase, password)
+	seedPhrase, err := Decrypt(encryptedSeedPhrase, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting seed phrase: %v", err)
 	}
 
-	pubPass, err := decrypt(encryptedPubPass, password)
+	pubPass, err := Decrypt(encryptedPubPass, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting public passphrase: %v", err)
 	}
 
-	privPass, err := decrypt(encryptedPrivPass, password)
+	privPass, err := Decrypt(encryptedPrivPass, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting private passphrase: %v", err)
 	}
 
-	birthdateStr, err := decrypt(encryptedBirthdate, password)
+	birthdateStr, err := Decrypt(encryptedBirthdate, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting birthdate: %v", err)
 	}
@@ -103,22 +103,22 @@ func LoadWalletAPI(walletName, password string) (string, string, string, time.Ti
 		return "", "", "", time.Time{}, fmt.Errorf("encrypted wallet data not found")
 	}
 
-	seedPhrase, err := decrypt(encryptedSeedPhrase, password)
+	seedPhrase, err := Decrypt(encryptedSeedPhrase, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting seed phrase: %v", err)
 	}
 
-	pubPass, err := decrypt(encryptedPubPass, password)
+	pubPass, err := Decrypt(encryptedPubPass, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting public passphrase: %v", err)
 	}
 
-	privPass, err := decrypt(encryptedPrivPass, password)
+	privPass, err := Decrypt(encryptedPrivPass, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting private passphrase: %v", err)
 	}
 
-	birthdateStr, err := decrypt(encryptedBirthdate, password)
+	birthdateStr, err := Decrypt(encryptedBirthdate, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting birthdate: %v", err)
 	}
@@ -174,7 +174,7 @@ func DeleteWallet(reader *bufio.Reader) error {
 	password = strings.TrimSpace(password)
 
 	// Attempt to decrypt the seed phrase using the provided password
-	_, err = decrypt(encryptedSeedPhrase, password)
+	_, err = Decrypt(encryptedSeedPhrase, password)
 	if err != nil {
 		return fmt.Errorf("error decrypting seed phrase: incorrect password or decryption failed")
 	}
@@ -190,7 +190,7 @@ func DeleteWallet(reader *bufio.Reader) error {
 	}
 
 	// Delete wallet files
-	err = deleteWalletFiles(walletName)
+	err = DeleteWalletFiles(walletName)
 	if err != nil {
 		return fmt.Errorf("error deleting wallet files: %v", err)
 	}
@@ -200,7 +200,7 @@ func DeleteWallet(reader *bufio.Reader) error {
 }
 
 // deleteWalletFiles deletes all wallet-related files and directories for a given wallet name.
-func deleteWalletFiles(walletName string) error {
+func DeleteWalletFiles(walletName string) error {
 	// Get the base directories from the configuration
 	baseDir := viper.GetString("base_dir")                 // Base directory for general wallet-related files
 	walletDir := viper.GetString("wallet_dir")             // Directory containing .env files
