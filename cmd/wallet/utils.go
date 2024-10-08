@@ -13,7 +13,12 @@ import (
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/config"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/ipc"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/logger"
-	setupwallet "github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet"
+
+	// setupwallet "github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet"
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/auth"
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/creation"
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/operations"
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/utils"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -35,23 +40,23 @@ func interactiveMode() {
 
 		switch choice {
 		case "1":
-			err := setupwallet.CreateNewWallet(reader)
+			err := creation.CreateNewWallet(reader)
 			if err != nil {
 				log.Printf("Error setting up new wallet: %s", err)
 			}
 		case "2":
-			err := setupwallet.ExistingWallet(reader)
+			err := creation.ExistingWallet(reader)
 			if err != nil {
 				log.Printf("Error setting up wallet: %s", err)
 			}
 		case "3":
-			err := setupwallet.OpenAndloadWallet(reader, viper.GetString("base_dir"))
+			err := auth.OpenAndloadWallet(reader, viper.GetString("base_dir"))
 			if err != nil {
 				log.Printf("Error starting up wallet: %s", err)
 			}
 		case "4":
 			fmt.Println("Deleting a wallet.")
-			err := setupwallet.DeleteWallet(reader)
+			err := operations.DeleteWallet(reader)
 			if err != nil {
 				log.Printf("Error deleting wallet: %s", err)
 			}
@@ -124,7 +129,7 @@ var createWalletCmd = &cobra.Command{
 			apiKey = args[3]
 		}
 
-		mnemonic, err := setupwallet.CreateWalletAPI(walletName, password, pubKey, apiKey)
+		mnemonic, err := creation.CreateWalletAPI(walletName, password, pubKey, apiKey)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating wallet: %v\n", err)
 			os.Exit(1)
@@ -163,7 +168,7 @@ var importWalletCmd = &cobra.Command{
 			apiKey = args[5]
 		}
 
-		err := setupwallet.ImportWalletAPI(walletName, mnemonic, password, birthdate, pubKey, apiKey)
+		err := creation.ImportWalletAPI(walletName, mnemonic, password, birthdate, pubKey, apiKey)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error importing wallet: %v\n", err)
 			os.Exit(1)
@@ -196,7 +201,7 @@ var openWalletCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		err = setupwallet.OpenAndLoadWalletAPI(walletName, password, baseDir)
+		err = auth.OpenAndLoadWalletAPI(walletName, password, baseDir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error opening wallet: %v\n", err)
 			os.Exit(1)
@@ -425,7 +430,7 @@ var deleteWalletCmd = &cobra.Command{
 		}
 
 		// Decrypt the seed phrase with the provided password
-		_, err = setupwallet.Decrypt(encryptedSeedPhrase, password)
+		_, err = utils.Decrypt(encryptedSeedPhrase, password)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error decrypting seed phrase: incorrect password or decryption failed\n")
 			os.Exit(1)
@@ -434,7 +439,7 @@ var deleteWalletCmd = &cobra.Command{
 		// Confirm deletion will be handled by the frontend
 
 		// Proceed with deleting the wallet files
-		err = setupwallet.DeleteWalletFiles(walletName)
+		err = utils.DeleteWalletFiles(walletName)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error deleting wallet files: %v\n", err)
 			os.Exit(1)

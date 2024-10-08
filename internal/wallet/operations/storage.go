@@ -1,4 +1,4 @@
-package wallet
+package operations
 
 import (
 	"log"
@@ -10,16 +10,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/utils"
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
 const (
-	walletDir  = "./wallets"
 	timeFormat = "2006-01-02T15:04:05Z"
 )
 
-func saveWalletData(walletName, encryptedSeedPhrase, encryptedPubPass, encryptedPrivPass, encryptedBirthdate string) {
+func SaveWalletData(walletName, encryptedSeedPhrase, encryptedPubPass, encryptedPrivPass, encryptedBirthdate string) {
 	err := os.MkdirAll(walletDir, os.ModePerm)
 	if err != nil {
 		log.Fatalf("Error creating wallet directory: %v", err)
@@ -38,7 +38,7 @@ func saveWalletData(walletName, encryptedSeedPhrase, encryptedPubPass, encrypted
 	}
 }
 
-func loadWallet(walletName string) (string, string, string, time.Time, error) {
+func LoadWallet(walletName string) (string, string, string, time.Time, error) {
 	envFile := filepath.Join(walletDir, walletName+".env")
 	err := godotenv.Load(envFile)
 	if err != nil {
@@ -59,22 +59,22 @@ func loadWallet(walletName string) (string, string, string, time.Time, error) {
 	password, _ := reader.ReadString('\n')
 	password = strings.TrimSpace(password)
 
-	seedPhrase, err := Decrypt(encryptedSeedPhrase, password)
+	seedPhrase, err := utils.Decrypt(encryptedSeedPhrase, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting seed phrase: %v", err)
 	}
 
-	pubPass, err := Decrypt(encryptedPubPass, password)
+	pubPass, err := utils.Decrypt(encryptedPubPass, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting public passphrase: %v", err)
 	}
 
-	privPass, err := Decrypt(encryptedPrivPass, password)
+	privPass, err := utils.Decrypt(encryptedPrivPass, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting private passphrase: %v", err)
 	}
 
-	birthdateStr, err := Decrypt(encryptedBirthdate, password)
+	birthdateStr, err := utils.Decrypt(encryptedBirthdate, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting birthdate: %v", err)
 	}
@@ -103,22 +103,22 @@ func LoadWalletAPI(walletName, password string) (string, string, string, time.Ti
 		return "", "", "", time.Time{}, fmt.Errorf("encrypted wallet data not found")
 	}
 
-	seedPhrase, err := Decrypt(encryptedSeedPhrase, password)
+	seedPhrase, err := utils.Decrypt(encryptedSeedPhrase, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting seed phrase: %v", err)
 	}
 
-	pubPass, err := Decrypt(encryptedPubPass, password)
+	pubPass, err := utils.Decrypt(encryptedPubPass, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting public passphrase: %v", err)
 	}
 
-	privPass, err := Decrypt(encryptedPrivPass, password)
+	privPass, err := utils.Decrypt(encryptedPrivPass, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting private passphrase: %v", err)
 	}
 
-	birthdateStr, err := Decrypt(encryptedBirthdate, password)
+	birthdateStr, err := utils.Decrypt(encryptedBirthdate, password)
 	if err != nil {
 		return "", "", "", time.Time{}, fmt.Errorf("error decrypting birthdate: %v", err)
 	}
@@ -131,7 +131,7 @@ func LoadWalletAPI(walletName, password string) (string, string, string, time.Ti
 	return seedPhrase, pubPass, privPass, birthdate, nil
 }
 
-func listWallets() ([]string, error) {
+func ListWallets() ([]string, error) {
 	files, err := os.ReadDir(walletDir)
 	if err != nil {
 		return nil, fmt.Errorf("error reading wallet directory: %v", err)
@@ -174,7 +174,7 @@ func DeleteWallet(reader *bufio.Reader) error {
 	password = strings.TrimSpace(password)
 
 	// Attempt to decrypt the seed phrase using the provided password
-	_, err = Decrypt(encryptedSeedPhrase, password)
+	_, err = utils.Decrypt(encryptedSeedPhrase, password)
 	if err != nil {
 		return fmt.Errorf("error decrypting seed phrase: incorrect password or decryption failed")
 	}
@@ -190,56 +190,11 @@ func DeleteWallet(reader *bufio.Reader) error {
 	}
 
 	// Delete wallet files
-	err = DeleteWalletFiles(walletName)
+	err = utils.DeleteWalletFiles(walletName)
 	if err != nil {
 		return fmt.Errorf("error deleting wallet files: %v", err)
 	}
 
 	fmt.Println("Wallet deleted successfully.")
-	return nil
-}
-
-// deleteWalletFiles deletes all wallet-related files and directories for a given wallet name.
-func DeleteWalletFiles(walletName string) error {
-	// Get the base directories from the configuration
-	baseDir := viper.GetString("base_dir")                 // Base directory for general wallet-related files
-	walletDir := viper.GetString("wallet_dir")             // Directory containing .env files
-	neutrinoDbDir := filepath.Join(baseDir, "neutrino_db") // Neutrino database directory
-	jwtKeysDir := filepath.Join(baseDir, "jwtkeys")        // JWT keys directory
-
-	// Paths for wallet-specific files and directories
-	envFile := filepath.Join(walletDir, walletName+".env")                                     // .env file
-	neutrinoWalletDir := filepath.Join(neutrinoDbDir, fmt.Sprintf("%s_wallet", walletName))    // Neutrino wallet directory
-	gravitonDbFile := filepath.Join(baseDir, fmt.Sprintf("%s_wallet_graviton.db", walletName)) // Graviton DB file
-	jwtKeyDir := filepath.Join(jwtKeysDir, walletName)                                         // JWT key directory
-
-	// Delete the wallet .env file
-	if err := os.Remove(envFile); err != nil {
-		log.Printf("Failed to delete .env file: %v", err) // Continue even if env file removal fails
-	} else {
-		log.Printf("Successfully deleted .env file: %s", envFile)
-	}
-
-	// Delete the Neutrino wallet directory and its contents
-	if err := os.RemoveAll(neutrinoWalletDir); err != nil {
-		log.Printf("Failed to delete Neutrino wallet directory: %v", err)
-	} else {
-		log.Printf("Successfully deleted Neutrino wallet directory: %s", neutrinoWalletDir)
-	}
-
-	// Delete the Graviton DB file
-	if err := os.RemoveAll(gravitonDbFile); err != nil {
-		log.Printf("Failed to delete Graviton DB file: %v", err)
-	} else {
-		log.Printf("Successfully deleted Graviton DB file or directory: %s", gravitonDbFile)
-	}
-
-	// Delete the JWT key directory and its contents
-	if err := os.RemoveAll(jwtKeyDir); err != nil {
-		log.Printf("Failed to delete JWT key directory: %v", err)
-	} else {
-		log.Printf("Successfully deleted JWT key directory: %s", jwtKeyDir)
-	}
-
 	return nil
 }

@@ -1,4 +1,4 @@
-package wallet
+package transactions
 
 import (
 	"bufio"
@@ -10,16 +10,30 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/api"
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/utils"
 	transaction "github.com/Maphikza/btc-wallet-btcsuite.git/lib/transaction"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcwallet/wallet"
 	"github.com/spf13/viper"
 )
 
-func (s *WalletServer) exitWalletCMD() error {
+type WalletServer struct {
+	API *api.API
+}
+
+var (
+	engaged     bool
+	exitMutex   sync.Mutex
+	exiting     bool
+	transacting bool
+)
+
+func (s *WalletServer) ExitWalletCMD() error {
 	exitMutex.Lock()
 	defer exitMutex.Unlock()
 
@@ -36,12 +50,12 @@ func (s *WalletServer) exitWalletCMD() error {
 	defer func() { engaged = false }()
 
 	// Set wallet_synced and wallet_live to false before initiating the shutdown
-	err = setWalletSync(false)
+	err = utils.SetWalletSync(false)
 	if err != nil {
 		log.Printf("Error setting wallet synced state to false: %v", err)
 	}
 
-	err = setWalletLive(false)
+	err = utils.SetWalletLive(false)
 	if err != nil {
 		log.Printf("Error setting wallet live state: %v", err)
 	}
@@ -49,14 +63,14 @@ func (s *WalletServer) exitWalletCMD() error {
 	exiting = true
 	fmt.Println("Initiating graceful shutdown...")
 
-	if err := gracefulShutdown(); err != nil {
+	if err := utils.GracefulShutdown(); err != nil {
 		return fmt.Errorf("error during shutdown: %v", err)
 	}
 
 	return nil
 }
 
-func (s *WalletServer) exitWallet() error {
+func (s *WalletServer) ExitWallet() error {
 	exitMutex.Lock()
 	defer exitMutex.Unlock()
 
@@ -74,12 +88,12 @@ func (s *WalletServer) exitWallet() error {
 
 	if confirmation == "y" {
 		exiting = true
-		err := setWalletLive(false)
+		err := utils.SetWalletLive(false)
 		if err != nil {
 			log.Printf("Error setting wallet live state: %v", err)
 		}
 		fmt.Println("Initiating graceful shutdown...")
-		if err := gracefulShutdown(); err != nil {
+		if err := utils.GracefulShutdown(); err != nil {
 			return fmt.Errorf("error during shutdown: %v", err)
 		}
 	} else {
@@ -88,7 +102,7 @@ func (s *WalletServer) exitWallet() error {
 	return nil
 }
 
-func (s *WalletServer) performTransaction() error {
+func (s *WalletServer) PerformTransaction() error {
 	// Implement your transaction logic here
 	// This is a placeholder for your existing transaction code
 	log.Println("Performing transaction...")
@@ -275,7 +289,7 @@ func (s *WalletServer) performTransaction() error {
 	return nil
 }
 
-func (s *WalletServer) handleGetWalletBalance() (interface{}, error) {
+func (s *WalletServer) HandleGetWalletBalance() (interface{}, error) {
 	balance, err := GetWalletBalance(s.API.Wallet)
 	if err != nil {
 		return nil, err
@@ -284,7 +298,7 @@ func (s *WalletServer) handleGetWalletBalance() (interface{}, error) {
 	return map[string]int64{"balance": balance}, nil
 }
 
-func (s *WalletServer) handleEstimateTransactionSize(args []string) (interface{}, error) {
+func (s *WalletServer) HandleEstimateTransactionSize(args []string) (interface{}, error) {
 	if len(args) != 3 {
 		return nil, fmt.Errorf("invalid number of arguments for estimate-transaction-size")
 	}
@@ -305,7 +319,7 @@ func (s *WalletServer) handleEstimateTransactionSize(args []string) (interface{}
 	return map[string]int{"size": size}, nil
 }
 
-func (s *WalletServer) handleGetTransactionHistory() (interface{}, error) {
+func (s *WalletServer) HandleGetTransactionHistory() (interface{}, error) {
 	history, err := GetTransactionHistory(s.API.Wallet, s.API.Name)
 	if err != nil {
 		return nil, err

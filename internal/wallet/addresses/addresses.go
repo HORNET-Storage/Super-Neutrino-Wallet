@@ -1,10 +1,8 @@
-package wallet
+package addresses
 
 import (
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"time"
 
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
@@ -14,17 +12,17 @@ import (
 	"github.com/btcsuite/btcwallet/wallet"
 )
 
-func handleAddressGeneration(w *wallet.Wallet, chainClient *chain.NeutrinoClient, needsAddresses, freshWallet bool) error {
+func HandleAddressGeneration(w *wallet.Wallet, chainClient *chain.NeutrinoClient, needsAddresses, freshWallet bool) error {
 	var numberofAddr int
 	if needsAddresses {
 		numberofAddr = 30
-		err := generateInitialAddresses(w, chainClient, numberofAddr)
+		err := GenerateInitialAddresses(w, chainClient, numberofAddr)
 		if err != nil {
 			return fmt.Errorf("error generating initial addresses: %s", err)
 		}
 	} else if freshWallet {
 		numberofAddr = 1
-		err := generateInitialAddresses(w, chainClient, numberofAddr)
+		err := GenerateInitialAddresses(w, chainClient, numberofAddr)
 		if err != nil {
 			return fmt.Errorf("error generating initial addresses: %s", err)
 		}
@@ -35,7 +33,7 @@ func handleAddressGeneration(w *wallet.Wallet, chainClient *chain.NeutrinoClient
 	return nil
 }
 
-func generateInitialAddresses(w *wallet.Wallet, chainClient *chain.NeutrinoClient, numAddresses int) error {
+func GenerateInitialAddresses(w *wallet.Wallet, chainClient *chain.NeutrinoClient, numAddresses int) error {
 	const maxRetries = 2
 	var receiveAddresses, changeAddresses []btcutil.Address
 	var err error
@@ -83,20 +81,6 @@ func PrintAddresses(addrType string, addresses []btcutil.Address) {
 	for i, addr := range addresses {
 		log.Printf("%s address %d: %s", addrType, i, addr)
 	}
-}
-
-func CleanupExistingData(neutrinoDBPath, walletDBPath string) error {
-	if err := os.RemoveAll(neutrinoDBPath); err != nil {
-		return fmt.Errorf("failed to remove Neutrino database directory: %v", err)
-	}
-	if err := os.MkdirAll(neutrinoDBPath, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to recreate Neutrino database directory: %v", err)
-	}
-	walletDir := filepath.Dir(walletDBPath)
-	if err := os.MkdirAll(walletDir, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to recreate wallet directory: %v", err)
-	}
-	return nil
 }
 
 func GenerateAndSaveAddresses(w *wallet.Wallet, count int) ([]btcutil.Address, []btcutil.Address, error) {

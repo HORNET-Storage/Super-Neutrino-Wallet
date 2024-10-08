@@ -1,4 +1,4 @@
-package wallet
+package formatter
 
 import (
 	"bytes"
