@@ -1,4 +1,4 @@
-package wallet
+package creation
 
 import (
 	"bufio"
@@ -9,8 +9,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/operations"
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/utils"
 	"github.com/spf13/viper"
 	"github.com/tyler-smith/go-bip39"
+)
+
+const (
+	timeFormat = "2006-01-02T15:04:05Z"
 )
 
 func CreateNewWallet(reader *bufio.Reader) error {
@@ -42,7 +48,7 @@ func CreateNewWallet(reader *bufio.Reader) error {
 	password, _ := reader.ReadString('\n')
 	password = strings.TrimSpace(password)
 
-	encryptedMnemonic := encrypt(mnemonic, password)
+	encryptedMnemonic := utils.Encrypt(mnemonic, password)
 
 	pubKey := ""
 	apiKey := ""
@@ -89,15 +95,15 @@ func CreateNewWallet(reader *bufio.Reader) error {
 		return fmt.Errorf("error generating private passphrase: %v", err)
 	}
 
-	encryptedPubPass := encrypt(pubPass, password)
-	encryptedPrivPass := encrypt(privPass, password)
+	encryptedPubPass := utils.Encrypt(pubPass, password)
+	encryptedPrivPass := utils.Encrypt(privPass, password)
 
 	// Set birthdate to current date and time
 	birthdate := time.Now().UTC()
-	encryptedBirthdate := encrypt(birthdate.Format(timeFormat), password)
+	encryptedBirthdate := utils.Encrypt(birthdate.Format(timeFormat), password)
 
 	// Save wallet data along with panel-specific info (if applicable)
-	saveWalletData(walletName, encryptedMnemonic, encryptedPubPass, encryptedPrivPass, encryptedBirthdate)
+	operations.SaveWalletData(walletName, encryptedMnemonic, encryptedPubPass, encryptedPrivPass, encryptedBirthdate)
 
 	fmt.Printf("Wallet '%s' created and encrypted successfully.\n", walletName)
 	fmt.Printf("Wallet birthdate: %s\n", birthdate.Format("2006-01-02"))
@@ -123,7 +129,7 @@ func CreateWalletAPI(walletName, password, pubKey, apiKey string) (string, error
 		return "", fmt.Errorf("error generating mnemonic: %v", err)
 	}
 
-	encryptedMnemonic := encrypt(mnemonic, password)
+	encryptedMnemonic := utils.Encrypt(mnemonic, password)
 
 	// Set panel wallet configuration if pubKey and apiKey are provided
 	if pubKey != "" && apiKey != "" {
@@ -150,15 +156,15 @@ func CreateWalletAPI(walletName, password, pubKey, apiKey string) (string, error
 		return "", fmt.Errorf("error generating private passphrase: %v", err)
 	}
 
-	encryptedPubPass := encrypt(pubPass, password)
-	encryptedPrivPass := encrypt(privPass, password)
+	encryptedPubPass := utils.Encrypt(pubPass, password)
+	encryptedPrivPass := utils.Encrypt(privPass, password)
 
 	// Set birthdate to current date and time
 	birthdate := time.Now().UTC()
-	encryptedBirthdate := encrypt(birthdate.Format(timeFormat), password)
+	encryptedBirthdate := utils.Encrypt(birthdate.Format(timeFormat), password)
 
 	// Save wallet data
-	saveWalletData(walletName, encryptedMnemonic, encryptedPubPass, encryptedPrivPass, encryptedBirthdate)
+	operations.SaveWalletData(walletName, encryptedMnemonic, encryptedPubPass, encryptedPrivPass, encryptedBirthdate)
 
 	log.Printf("Wallet '%s' created and encrypted successfully.", walletName)
 	log.Printf("Wallet birthdate: %s", birthdate.Format("2006-01-02"))
@@ -197,8 +203,8 @@ func ExistingWallet(reader *bufio.Reader) error {
 	password, _ := reader.ReadString('\n')
 	password = strings.TrimSpace(password)
 
-	encryptedMnemonic := encrypt(mnemonic, password)
-	encryptedBirthdate := encrypt(birthdate.Format(timeFormat), password)
+	encryptedMnemonic := utils.Encrypt(mnemonic, password)
+	encryptedBirthdate := utils.Encrypt(birthdate.Format(timeFormat), password)
 
 	pubKey := ""
 	apiKey := ""
@@ -245,10 +251,10 @@ func ExistingWallet(reader *bufio.Reader) error {
 		return fmt.Errorf("error generating private passphrase: %v", err)
 	}
 
-	encryptedPubPass := encrypt(pubPass, password)
-	encryptedPrivPass := encrypt(privPass, password)
+	encryptedPubPass := utils.Encrypt(pubPass, password)
+	encryptedPrivPass := utils.Encrypt(privPass, password)
 
-	saveWalletData(walletName, encryptedMnemonic, encryptedPubPass, encryptedPrivPass, encryptedBirthdate)
+	operations.SaveWalletData(walletName, encryptedMnemonic, encryptedPubPass, encryptedPrivPass, encryptedBirthdate)
 
 	fmt.Printf("Existing wallet '%s' encrypted and saved successfully.\n", walletName)
 
@@ -267,8 +273,8 @@ func ImportWalletAPI(walletName, mnemonic, password, birthdate, pubKey, apiKey s
 		return fmt.Errorf("invalid date format: %v", err)
 	}
 
-	encryptedMnemonic := encrypt(mnemonic, password)
-	encryptedBirthdate := encrypt(parsedBirthdate.Format(timeFormat), password)
+	encryptedMnemonic := utils.Encrypt(mnemonic, password)
+	encryptedBirthdate := utils.Encrypt(parsedBirthdate.Format(timeFormat), password)
 
 	if pubKey != "" && apiKey != "" {
 		viper.Set("relay_wallet_set", false)
@@ -294,10 +300,10 @@ func ImportWalletAPI(walletName, mnemonic, password, birthdate, pubKey, apiKey s
 		return fmt.Errorf("error generating private passphrase: %v", err)
 	}
 
-	encryptedPubPass := encrypt(pubPass, password)
-	encryptedPrivPass := encrypt(privPass, password)
+	encryptedPubPass := utils.Encrypt(pubPass, password)
+	encryptedPrivPass := utils.Encrypt(privPass, password)
 
-	saveWalletData(walletName, encryptedMnemonic, encryptedPubPass, encryptedPrivPass, encryptedBirthdate)
+	operations.SaveWalletData(walletName, encryptedMnemonic, encryptedPubPass, encryptedPrivPass, encryptedBirthdate)
 
 	return nil
 }

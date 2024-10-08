@@ -1,4 +1,4 @@
-package wallet
+package types
 
 import (
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/api"
