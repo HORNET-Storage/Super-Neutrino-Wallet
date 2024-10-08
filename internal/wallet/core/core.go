@@ -203,8 +203,6 @@ func InitializeWallet(seedPhrase string, pubPass []byte, privPass []byte, baseDi
 		return nil, nil, nil, nil, nil, fmt.Errorf("error starting chain client: %v", err)
 	}
 
-	log.Println("Wallet is initiated? ", w.Locked())
-
 	// Ensure that the wallet and chain client are properly initialized before calling SynchronizeRPC
 	if w == nil {
 		log.Println("Wallet is nil, cannot synchronize RPC")
