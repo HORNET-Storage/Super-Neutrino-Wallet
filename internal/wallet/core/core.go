@@ -203,10 +203,25 @@ func InitializeWallet(seedPhrase string, pubPass []byte, privPass []byte, baseDi
 		return nil, nil, nil, nil, nil, fmt.Errorf("error starting chain client: %v", err)
 	}
 
+	// Ensure that the wallet and chain client are properly initialized before calling SynchronizeRPC
+	if w == nil {
+		log.Println("Wallet is nil, cannot synchronize RPC")
+		return nil, nil, nil, nil, nil, fmt.Errorf("wallet is not properly initialized")
+	}
+
+	if chainClient == nil {
+		log.Println("Chain client is nil, cannot synchronize RPC")
+		return nil, nil, nil, nil, nil, fmt.Errorf("chain client is not properly initialized")
+	}
+
 	log.Println("Wallet is initiated? ", w.Locked())
 
+	// Proceed with synchronization only if the wallet is locked
 	if w.Locked() {
+		log.Println("Synchronizing RPC with the chain client")
 		w.SynchronizeRPC(chainClient)
+	} else {
+		log.Println("Wallet is not locked, skipping SynchronizeRPC call")
 	}
 
 	addresses.HandleAddressGeneration(w, chainClient, needsAddresses, freshWallet)

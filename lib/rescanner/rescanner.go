@@ -18,26 +18,42 @@ import (
 func PerformRescan(config RescanConfig) error {
 	log.Println("Starting transaction recovery process")
 
-	// Start the wallet synchronization process
-	go config.Wallet.SynchronizeRPC(config.ChainClient)
+	// Check for nil values early
+	if config.Wallet == nil || config.ChainClient == nil {
+		return fmt.Errorf("wallet or ChainClient is nil, cannot proceed with rescan")
+	}
+
+	// Create a channel to capture any errors from the goroutine
+	syncErrChan := make(chan error, 1)
+
+	// Start the wallet synchronization process in a goroutine
+	go func() {
+		defer close(syncErrChan)
+		config.Wallet.SynchronizeRPC(config.ChainClient)
+	}()
 
 	// Wait for initial sync to complete or timeout
-	syncTimeout := time.After(time.Second * 5) // Adjust timeout as needed
+	syncTimeout := time.After(5 * time.Second)
+SyncLoop:
 	for {
 		select {
+		case err := <-syncErrChan:
+			if err != nil {
+				log.Printf("Error in wallet synchronization: %v", err)
+				break SyncLoop
+			}
 		case <-syncTimeout:
 			log.Println("Initial sync timeout reached, proceeding with address scanning")
-			goto AddressScanning
+			break SyncLoop
 		default:
 			if !config.Wallet.SynchronizingToNetwork() {
 				log.Println("Initial sync completed, proceeding with address scanning")
-				goto AddressScanning
+				break SyncLoop
 			}
 			time.Sleep(time.Second)
 		}
 	}
 
-AddressScanning:
 	// Retrieve all addresses from the wallet
 	allAddresses, err := config.Wallet.AccountAddresses(0)
 	if err != nil {
@@ -77,22 +93,22 @@ AddressScanning:
 	}
 
 	// Wait for full synchronization to complete or timeout
-	fullSyncTimeout := time.After(time.Minute * 1) // Adjust final timeout as needed
+	fullSyncTimeout := time.After(1 * time.Minute)
+FullSyncLoop:
 	for {
 		select {
 		case <-fullSyncTimeout:
 			log.Println("Wallet synchronization timed out, but address scanning completed")
-			goto Finish
+			break FullSyncLoop
 		default:
 			if !config.Wallet.SynchronizingToNetwork() {
 				log.Println("Wallet synchronization completed successfully")
-				goto Finish
+				break FullSyncLoop
 			}
 			time.Sleep(time.Second)
 		}
 	}
 
-Finish:
 	// After synchronization, get the updated balance from our database
 	balance, err := config.Wallet.CalculateBalance(1)
 	if err != nil {
@@ -100,10 +116,100 @@ Finish:
 	}
 
 	log.Printf("Final wallet balance after rescan: %d satoshis", balance)
-
 	log.Println("Transaction recovery process completed")
+
 	return nil
 }
+
+// func PerformRescan(config RescanConfig) error {
+// 	log.Println("Starting transaction recovery process")
+
+// 	// Start the wallet synchronization process
+// 	go config.Wallet.SynchronizeRPC(config.ChainClient)
+
+// 	// Wait for initial sync to complete or timeout
+// 	syncTimeout := time.After(time.Second * 5) // Adjust timeout as needed
+// 	for {
+// 		select {
+// 		case <-syncTimeout:
+// 			log.Println("Initial sync timeout reached, proceeding with address scanning")
+// 			goto AddressScanning
+// 		default:
+// 			if !config.Wallet.SynchronizingToNetwork() {
+// 				log.Println("Initial sync completed, proceeding with address scanning")
+// 				goto AddressScanning
+// 			}
+// 			time.Sleep(time.Second)
+// 		}
+// 	}
+
+// AddressScanning:
+// 	// Retrieve all addresses from the wallet
+// 	allAddresses, err := config.Wallet.AccountAddresses(0)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to get addresses from wallet: %v", err)
+// 	}
+
+// 	log.Printf("Rescanning with %d addresses", len(allAddresses))
+
+// 	// Create a map of addresses for faster lookup
+// 	walletAddressMap := make(map[string]bool)
+// 	for _, addr := range allAddresses {
+// 		walletAddressMap[addr.EncodeAddress()] = true
+// 	}
+
+// 	// Get the current best block height
+// 	_, bestHeight, err := config.ChainClient.GetBestBlock()
+// 	if err != nil {
+// 		return fmt.Errorf("failed to get best block: %v", err)
+// 	}
+
+// 	// Create a RescanChainSource from the ChainClient
+// 	chainSource := &neutrino.RescanChainSource{ChainService: config.ChainClient.CS}
+
+// 	quit := make(chan struct{})
+// 	defer close(quit)
+
+// 	// Rescan addresses
+// 	log.Println("Starting address scanning...")
+
+// 	knownTxs := make(map[chainhash.Hash]*btcutil.Tx)
+// 	for _, addr := range allAddresses {
+// 		err := rescanAddress(chainSource, addr.String(), config.StartBlock, bestHeight, quit, knownTxs)
+// 		if err != nil {
+// 			log.Printf("Error scanning address %s: %v", addr.String(), err)
+// 			continue
+// 		}
+// 	}
+
+// 	// Wait for full synchronization to complete or timeout
+// 	fullSyncTimeout := time.After(time.Minute * 1) // Adjust final timeout as needed
+// 	for {
+// 		select {
+// 		case <-fullSyncTimeout:
+// 			log.Println("Wallet synchronization timed out, but address scanning completed")
+// 			goto Finish
+// 		default:
+// 			if !config.Wallet.SynchronizingToNetwork() {
+// 				log.Println("Wallet synchronization completed successfully")
+// 				goto Finish
+// 			}
+// 			time.Sleep(time.Second)
+// 		}
+// 	}
+
+// Finish:
+// 	// After synchronization, get the updated balance from our database
+// 	balance, err := config.Wallet.CalculateBalance(1)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to get wallet balance: %v", err)
+// 	}
+
+// 	log.Printf("Final wallet balance after rescan: %d satoshis", balance)
+
+// 	log.Println("Transaction recovery process completed")
+// 	return nil
+// }
 
 func rescanAddress(cs *neutrino.RescanChainSource, address string, startHeight, endHeight int32, quit chan struct{}, knownTxs map[chainhash.Hash]*btcutil.Tx) error {
 	addr, err := btcutil.DecodeAddress(address, &chaincfg.MainNetParams)
