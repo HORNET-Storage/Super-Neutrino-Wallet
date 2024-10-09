@@ -147,7 +147,15 @@ func (s *Server) Close() error {
 }
 
 func NewClient() (*Client, error) {
-	conn, err := net.Dial("unix", unixSocketPath)
+	var conn net.Conn
+	var err error
+
+	if osType == "windows" {
+		conn, err = net.Dial("tcp", windowsSocketPort)
+	} else {
+		conn, err = net.Dial("unix", unixSocketPath)
+	}
+
 	if err != nil {
 		return nil, err
 	}
