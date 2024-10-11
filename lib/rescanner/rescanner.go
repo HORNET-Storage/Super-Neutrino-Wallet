@@ -95,7 +95,10 @@ SyncLoop:
 			log.Printf("Error scanning address %s: %v", addr.String(), err)
 			continue
 		}
+		logger.Info(fmt.Sprintf("Rescan completed for address %s", addr))
 	}
+
+	logger.Info("Address scanning complete...")
 
 	// Wait for full synchronization to complete or timeout
 	fullSyncTimeout := time.After(1 * time.Minute)
@@ -170,7 +173,6 @@ func rescanAddress(cs *neutrino.RescanChainSource, address string, startHeight, 
 			return fmt.Errorf("rescan error: %v", err)
 		}
 		log.Printf("Rescan completed for address %s", address)
-		logger.Info("Rescan completed for address: ", address)
 	case <-time.After(time.Minute * 30): // Adjust timeout as needed
 		return fmt.Errorf("rescan timed out for address %s", address)
 	}
