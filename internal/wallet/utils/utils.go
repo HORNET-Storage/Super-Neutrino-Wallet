@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/logger"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/ripemd160"
@@ -105,6 +106,8 @@ func GracefulShutdown() error {
 	if err != nil {
 		log.Printf("Error setting wallet sync state: %v", err)
 	}
+
+	defer logger.Cleanup() // Ensure the log file is closed
 
 	time.Sleep(2 * time.Second) // Give user time to read the message
 	os.Exit(0)

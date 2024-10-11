@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/logger"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/operations"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/utils"
 
@@ -152,6 +153,8 @@ func OpenAndLoadWalletAPI(walletName, password string, baseDir string) error {
 	if err != nil {
 		log.Printf("Error setting wallet sync state: %v", err)
 	}
+
+	logger.Info("Wallet opened successfully for: ", walletName)
 
 	err = operations.StartWallet(seedPhrase, pubPass, privPass, baseDir, walletName, birthdate, serverMode)
 	if err != nil {

@@ -108,7 +108,17 @@ func initConfig() {
 
 	viper.Set("base_dir", baseDir)
 
-	logger.Init()
+	// Initialize the logger and ensure it starts with a fresh log file
+	err = logger.Init("wallet_startup.log")
+	if err != nil {
+		log.Fatalf("Error initializing logger: %v", err)
+	}
+
+	// Rotate the log file to ensure each session has a clean log
+	err = logger.RotateLog("wallet_startup.log")
+	if err != nil {
+		log.Fatalf("Error rotating log file: %v", err)
+	}
 }
 
 var createWalletCmd = &cobra.Command{
@@ -200,6 +210,8 @@ var openWalletCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Error getting current directory: %v\n", err)
 			os.Exit(1)
 		}
+
+		logger.Info("Starting wallet open operation for: ", walletName)
 
 		err = auth.OpenAndLoadWalletAPI(walletName, password, baseDir)
 		if err != nil {
