@@ -7,12 +7,15 @@ import (
 
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/ipc"
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/logger"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/formatter"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/utils"
 )
 
 func (s *WalletServer) SyncBlockchain() {
 	log.Println("Starting syncing process...")
+
+	logger.Info("Starting syncing process...")
 
 	for i := 0; i < 120; i++ {
 		time.Sleep(10 * time.Second)
@@ -22,19 +25,24 @@ func (s *WalletServer) SyncBlockchain() {
 			continue
 		}
 		log.Printf("Current block height: %d", bestBlock.Height)
+		logger.Info("Current block height: ", bestBlock.Height)
 
 		currentHash, err := s.API.ChainService.GetBlockHash(int64(bestBlock.Height))
 		if err != nil {
 			log.Printf("Error getting current block hash: %v", err)
+			logger.Error("Error getting current block hash: ", err)
 		} else {
 			log.Printf("Current block hash: %s", currentHash.String())
+			logger.Info("Current block hash: ", currentHash.String())
 		}
 
 		peers := s.API.ChainService.Peers()
 		log.Printf("Connected peers: %d", len(peers))
+		logger.Info("Connected peers: ", len(peers))
 
 		if s.API.ChainService.IsCurrent() {
 			log.Println("Chain is synced!")
+			logger.Info("Chain is synced!")
 			break
 		}
 	}
@@ -89,6 +97,8 @@ func (s *WalletServer) serverLoop() error {
 	if err != nil {
 		log.Printf("Error setting wallet sync state: %v", err)
 	}
+
+	logger.Info("Wallet synced")
 
 	go s.HandleIPCCommands(ipcServer)
 
