@@ -458,6 +458,12 @@ var deleteWalletCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		err = utils.ResetLastSyncTime()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error resettin Sync Time: %v\n", err)
+			os.Exit(1)
+		}
+
 		fmt.Println("Wallet deleted successfully.")
 	},
 }
