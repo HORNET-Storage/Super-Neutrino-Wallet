@@ -15,13 +15,13 @@ import (
 func HandleAddressGeneration(w *wallet.Wallet, chainClient *chain.NeutrinoClient, needsAddresses, freshWallet bool) error {
 	var numberofAddr int
 	if needsAddresses {
-		numberofAddr = 30
+		numberofAddr = 50
 		err := GenerateInitialAddresses(w, chainClient, numberofAddr)
 		if err != nil {
 			return fmt.Errorf("error generating initial addresses: %s", err)
 		}
 	} else if freshWallet {
-		numberofAddr = 1
+		numberofAddr = 100
 		err := GenerateInitialAddresses(w, chainClient, numberofAddr)
 		if err != nil {
 			return fmt.Errorf("error generating initial addresses: %s", err)
