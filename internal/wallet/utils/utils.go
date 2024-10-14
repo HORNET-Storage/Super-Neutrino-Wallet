@@ -133,6 +133,36 @@ func SetWalletSync(synced bool) error {
 	return nil
 }
 
+func SetLastSyncTime(syncTime time.Time) error {
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Printf("Error reading config: %s", err.Error())
+	}
+
+	viper.Set("last_sync_time", syncTime.Format(time.RFC3339))
+
+	err = viper.WriteConfig()
+	if err != nil {
+		return fmt.Errorf("error writing config file: %w", err)
+	}
+	return nil
+}
+
+func ResetLastSyncTime() error {
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Printf("Error reading config: %s", err.Error())
+	}
+
+	viper.Set("last_sync_time", "")
+
+	err = viper.WriteConfig()
+	if err != nil {
+		return fmt.Errorf("error writing config file: %w", err)
+	}
+	return nil
+}
+
 func SetWalletLive(live bool) error {
 	err := viper.ReadInConfig()
 	if err != nil {

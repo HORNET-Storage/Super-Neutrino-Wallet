@@ -79,6 +79,7 @@ func (s *WalletServer) StartSyncProcess() {
 
 			engaged = false
 			log.Println("Sync process completed.")
+			logger.Info("Sync process completed.")
 		}
 	}
 }

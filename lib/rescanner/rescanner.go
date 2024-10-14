@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/logger"
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/utils"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -14,6 +15,7 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/lightninglabs/neutrino"
 	"github.com/lightninglabs/neutrino/headerfs"
+	"github.com/spf13/viper"
 )
 
 func PerformRescan(config RescanConfig) error {
@@ -23,6 +25,29 @@ func PerformRescan(config RescanConfig) error {
 	// Check for nil values early
 	if config.Wallet == nil || config.ChainClient == nil {
 		return fmt.Errorf("wallet or ChainClient is nil, cannot proceed with rescan")
+	}
+
+	// Parse last sync time from the config
+	lastSyncTimeStr := viper.GetString("last_sync_time")
+	var syncTimeoutDuration time.Duration
+
+	if lastSyncTimeStr == "" {
+		// If last sync time is empty, set timeout to 3 minutes
+		syncTimeoutDuration = 3 * time.Minute
+	} else {
+		lastSyncTime, err := time.Parse(time.RFC3339, lastSyncTimeStr)
+		if err != nil {
+			log.Printf("Error parsing last sync time: %v", err)
+			syncTimeoutDuration = 1 * time.Minute
+		} else {
+			// If the last sync was more than 8 hours ago, set timeout to 1 minute
+			if time.Since(lastSyncTime) > 8*time.Hour {
+				syncTimeoutDuration = 1 * time.Minute
+			} else {
+				// Otherwise, set timeout to 30 seconds
+				syncTimeoutDuration = 30 * time.Second
+			}
+		}
 	}
 
 	// Create a channel to capture any errors from the goroutine
@@ -101,7 +126,7 @@ SyncLoop:
 	logger.Info("Address scanning complete...")
 
 	// Wait for full synchronization to complete or timeout
-	fullSyncTimeout := time.After(1 * time.Minute)
+	fullSyncTimeout := time.After(syncTimeoutDuration)
 FullSyncLoop:
 	for {
 		select {
@@ -117,6 +142,12 @@ FullSyncLoop:
 			}
 			time.Sleep(time.Second)
 		}
+	}
+
+	// After rescan and synchronization, update the last sync time
+	err = utils.SetLastSyncTime(time.Now())
+	if err != nil {
+		log.Printf("Error updating last sync time: %v", err)
 	}
 
 	// After synchronization, get the updated balance from our database
