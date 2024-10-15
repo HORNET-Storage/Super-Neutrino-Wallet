@@ -128,7 +128,7 @@ func (s *WalletServer) StartHTTPSServer() error {
 	}
 
 	// If not using HTTPS, start the HTTP server
-	log.Println("Starting HTTP server on :80")
+	log.Println("Starting HTTP server on :9003")
 	return server.ListenAndServe()
 }
 
