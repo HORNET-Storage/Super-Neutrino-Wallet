@@ -330,12 +330,12 @@ func (s *WalletServer) HandleGetTransactionHistory() (interface{}, error) {
 func (s *WalletServer) NewTransactionAPI(recipient string, amountStr, feeRateStr string) (map[string]interface{}, error) {
 	amount, err := strconv.ParseInt(amountStr, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("invalid amount: %v", err)
+		return map[string]interface{}{"error": fmt.Sprintf("invalid amount: %v", err)}, nil
 	}
 
 	feeRate, err := strconv.ParseInt(feeRateStr, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("invalid fee rate: %v", err)
+		return map[string]interface{}{"error": fmt.Sprintf("invalid fee rate: %v", err)}, nil
 	}
 
 	txHash, verified, err := transaction.HttpCheckBalanceAndCreateTransaction(s.API.Wallet, s.API.ChainClient.CS, true, amount, recipient, s.API.PrivPass, int(feeRate))
