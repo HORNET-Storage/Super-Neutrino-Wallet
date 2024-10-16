@@ -342,7 +342,8 @@ func (s *WalletServer) NewTransactionAPI(recipient string, amountStr, feeRateStr
 func (s *WalletServer) RBFTransactionAPI(originalTxID, newFeeRateStr string) (map[string]interface{}, error) {
 	newFeeRate, err := strconv.ParseInt(newFeeRateStr, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("invalid fee rate: %v", err)
+		log.Printf("invalid fee rate: %v", err)
+		return map[string]interface{}{"error": fmt.Sprintf("invalid fee rate: %v", err)}, nil
 	}
 
 	client, err := transaction.CreateElectrumClient(transaction.ElectrumConfig{
@@ -350,13 +351,16 @@ func (s *WalletServer) RBFTransactionAPI(originalTxID, newFeeRateStr string) (ma
 		UseSSL:     true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Electrum client: %v", err)
+		log.Printf("failed to create Electrum client: %v", err)
+		return map[string]interface{}{"error": fmt.Sprintf("failed to create Electrum client: %v", err)}, nil
+
 	}
 	defer client.Shutdown()
 
 	newTxID, verified, err := transaction.ReplaceTransactionWithHigherFee(s.API.Wallet, s.API.ChainClient.CS, originalTxID, newFeeRate, client, s.API.PrivPass)
 	if err != nil {
-		return nil, fmt.Errorf("RBF transaction failed: %v", err)
+		log.Printf("RBF transaction failed: %v", err)
+		return map[string]interface{}{"error": fmt.Sprintf("RBF transaction failed: %v", err)}, nil
 	}
 
 	return map[string]interface{}{
