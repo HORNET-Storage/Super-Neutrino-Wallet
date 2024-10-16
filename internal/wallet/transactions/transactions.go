@@ -340,7 +340,7 @@ func (s *WalletServer) NewTransactionAPI(recipient string, amountStr, feeRateStr
 
 	txHash, verified, err := transaction.HttpCheckBalanceAndCreateTransaction(s.API.Wallet, s.API.ChainClient.CS, true, amount, recipient, s.API.PrivPass, int(feeRate))
 	if err != nil {
-		return nil, fmt.Errorf("transaction failed: %v", err)
+		return map[string]interface{}{"error": fmt.Sprintf("transaction failed: %v", err)}, nil
 	}
 
 	return map[string]interface{}{
