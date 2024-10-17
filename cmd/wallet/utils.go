@@ -247,11 +247,38 @@ var newTransactionCmd = &cobra.Command{
 
 		result, err := client.SendCommand("new-transaction", args)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating transaction: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error communicating with wallet server: %v\n", err)
 			os.Exit(1)
 		}
 
-		json.NewEncoder(os.Stdout).Encode(result)
+		// Type switch to handle different result types
+		switch v := result.(type) {
+		case map[string]interface{}:
+			// If result is already a map, use it directly
+			if errorMsg, ok := v["error"]; ok {
+				fmt.Fprintf(os.Stderr, "Error creating transaction: %v\n", errorMsg)
+				os.Exit(1)
+			}
+			json.NewEncoder(os.Stdout).Encode(v)
+
+		case string:
+			// If result is a string, try to unmarshal it
+			var resultMap map[string]interface{}
+			if err := json.Unmarshal([]byte(v), &resultMap); err != nil {
+				fmt.Fprintf(os.Stderr, "Error unmarshaling response: %v\n", err)
+				os.Exit(1)
+			}
+			if errorMsg, ok := resultMap["error"]; ok {
+				fmt.Fprintf(os.Stderr, "Error creating transaction: %v\n", errorMsg)
+				os.Exit(1)
+			}
+			json.NewEncoder(os.Stdout).Encode(resultMap)
+
+		default:
+			// For any other type, encode as-is
+			fmt.Fprintf(os.Stderr, "Unexpected result type. Encoding as-is.\n")
+			json.NewEncoder(os.Stdout).Encode(result)
+		}
 	},
 }
 
@@ -270,13 +297,42 @@ var rbfTransactionCmd = &cobra.Command{
 
 		result, err := client.SendCommand("rbf-transaction", args)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error performing RBF transaction: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error communicating with wallet server: %v\n", err)
 			os.Exit(1)
 		}
 
-		log.Println("RBF result: ", result)
+		// For debugging
+		fmt.Fprintf(os.Stderr, "Result type: %T\n", result)
+		fmt.Fprintf(os.Stderr, "Result content: %+v\n", result)
 
-		json.NewEncoder(os.Stdout).Encode(result)
+		// Type switch to handle different result types
+		switch v := result.(type) {
+		case map[string]interface{}:
+			// If result is already a map, use it directly
+			if errorMsg, ok := v["error"]; ok {
+				fmt.Fprintf(os.Stderr, "Error in RBF transaction: %v\n", errorMsg)
+				os.Exit(1)
+			}
+			json.NewEncoder(os.Stdout).Encode(v)
+
+		case string:
+			// If result is a string, try to unmarshal it
+			var resultMap map[string]interface{}
+			if err := json.Unmarshal([]byte(v), &resultMap); err != nil {
+				fmt.Fprintf(os.Stderr, "Error unmarshaling response: %v\n", err)
+				os.Exit(1)
+			}
+			if errorMsg, ok := resultMap["error"]; ok {
+				fmt.Fprintf(os.Stderr, "Error in RBF transaction: %v\n", errorMsg)
+				os.Exit(1)
+			}
+			json.NewEncoder(os.Stdout).Encode(resultMap)
+
+		default:
+			// For any other type, encode as-is
+			fmt.Fprintf(os.Stderr, "Unexpected result type. Encoding as-is.\n")
+			json.NewEncoder(os.Stdout).Encode(result)
+		}
 	},
 }
 
