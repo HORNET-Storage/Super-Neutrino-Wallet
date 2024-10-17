@@ -13,6 +13,8 @@ import (
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/config"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/ipc"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/logger"
+	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/chaincfg"
 
 	// setupwallet "github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/auth"
@@ -238,12 +240,36 @@ var newTransactionCmd = &cobra.Command{
 	Long:  `Create a new transaction with the specified recipient, amount (in satoshis), and fee rate (in sat/vB).`,
 	Args:  cobra.ExactArgs(3),
 	Run: func(cmd *cobra.Command, args []string) {
+		// Early address verification
+		recipientAddr, err := btcutil.DecodeAddress(args[0], &chaincfg.MainNetParams)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid recipient address: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Verify amount is a valid integer
+		_, err = strconv.ParseInt(args[1], 10, 64)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid amount: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Verify fee rate is a valid integer
+		_, err = strconv.ParseInt(args[2], 10, 64)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid fee rate: %v\n", err)
+			os.Exit(1)
+		}
+
 		client, err := ipc.NewClient()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error connecting to wallet server: %v\n", err)
 			os.Exit(1)
 		}
 		defer client.Close()
+
+		// Use the string representation of the verified address
+		args[0] = recipientAddr.String()
 
 		result, err := client.SendCommand("new-transaction", args)
 		if err != nil {
