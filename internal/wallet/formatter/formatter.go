@@ -13,6 +13,7 @@ import (
 	"time"
 
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/addresses"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/lib/rescanner"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcwallet/chain"
@@ -149,29 +150,47 @@ func FetchAndSendWalletBalance(w *wallet.Wallet, walletName string) error {
 }
 
 func SendReceiveAddressesToBackend(walletName string) error {
-	// Retrieve the receive addresses
-	receiveAddresses, _, err := walletstatedb.RetrieveAddresses()
+	// Get unsent addresses instead of all addresses
+	unsentAddresses, err := addresses.GetUnsentAddresses()
 	if err != nil {
-		return fmt.Errorf("error retrieving receive addresses: %v", err)
+		return fmt.Errorf("error retrieving unsent addresses: %v", err)
+	}
+
+	// If there are no unsent addresses, return early
+	if len(unsentAddresses) == 0 {
+		log.Println("No unsent addresses to send")
+		return nil
 	}
 
 	// Prepare the data to send
-	var addresses []map[string]string
-	for i, addr := range receiveAddresses {
-		addresses = append(addresses, map[string]string{
+	var addressList []map[string]string
+	for i, addr := range unsentAddresses {
+		addressList = append(addressList, map[string]string{
 			"index":       fmt.Sprintf("%d", i),
-			"address":     addr.EncodeAddress(),
+			"address":     addr.Address,
 			"wallet_name": walletName,
 		})
 	}
 
-	jsonData, err := json.Marshal(addresses)
+	jsonData, err := json.Marshal(addressList)
 	if err != nil {
 		return fmt.Errorf("error marshaling addresses: %v", err)
 	}
 
-	// Use the sendToBackend function we created earlier
-	return sendToBackend("/api/wallet/addresses", jsonData)
+	// Send addresses to backend
+	err = sendToBackend("/api/wallet/addresses", jsonData)
+	if err != nil {
+		return fmt.Errorf("error sending addresses to backend: %v", err)
+	}
+
+	// Clear the unsent addresses after successful send
+	err = addresses.ClearUnsentAddresses()
+	if err != nil {
+		return fmt.Errorf("error clearing unsent addresses: %v", err)
+	}
+
+	log.Printf("Successfully sent and cleared %d addresses", len(addressList))
+	return nil
 }
 
 func sendToBackend(endpoint string, data []byte) error {
