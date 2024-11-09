@@ -20,3 +20,15 @@ type Address struct {
 	UsedAt      *time.Time
 	BlockHeight *uint32
 }
+
+type Transaction struct {
+	TxID          string    `json:"tx_id"`
+	WalletName    string    `json:"wallet_name"`
+	Address       string    `json:"address"`
+	Output        string    `json:"output"`
+	Value         string    `json:"value"`
+	Date          time.Time `json:"date"`
+	BlockHeight   *int32    `json:"block_height"`
+	Vout          uint32    `json:"vout"`
+	SentToBackend bool      `json:"sent_to_backend"`
+}
