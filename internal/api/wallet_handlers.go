@@ -11,12 +11,63 @@ import (
 	"time"
 
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/addresses"
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/formatter"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/deroproject/graviton"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/spf13/viper"
 )
+
+// AddressGenerationRequest represents the incoming request for new addresses
+type AddressGenerationRequest struct {
+	Count int `json:"count"`
+}
+
+func (s *API) HandleAddressGeneration(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse the request
+	var req AddressGenerationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("Error decoding request: %v", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Count <= 0 || req.Count > 1000 {
+		http.Error(w, "Invalid count: must be between 1 and 1000", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Generating %d new addresses for wallet: %s", req.Count, s.Name)
+
+	// Generate addresses using the existing functionality
+	_, _, err := addresses.GenerateAndSaveAddresses(s.Wallet, req.Count)
+	if err != nil {
+		log.Printf("Error generating addresses: %v", err)
+		http.Error(w, "Failed to generate addresses", http.StatusInternalServerError)
+		return
+	}
+
+	err = formatter.SendReceiveAddressesToBackend(s.Name)
+	if err != nil {
+		log.Printf("Failed to send address to backend: %s", err)
+		http.Error(w, "Failed to send addresses to backend", http.StatusInternalServerError)
+		return
+	}
+
+	// Send success response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "success",
+		"message": fmt.Sprintf("Successfully generated %d addresses", req.Count),
+	})
+}
 
 func (s *API) HandleChallengeRequest(w http.ResponseWriter, _ *http.Request) {
 	log.Println("Challenge requested...")

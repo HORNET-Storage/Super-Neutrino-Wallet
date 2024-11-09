@@ -26,6 +26,7 @@ const (
 	AddressStatusAllocated = "allocated"
 	AddressStatusUsed      = "used"
 	MinAvailableAddresses  = 10
+	UnsentTransactionsTree = "unsent_transactions"
 )
 
 func InitDB(dbPath string) error {
@@ -520,4 +521,152 @@ func ExpireOldChallenges(tree *graviton.Tree) error {
 		}
 	}
 	return nil
+}
+
+// SaveNewTransaction saves a transaction only if it doesn't already exist
+func SaveNewTransaction(tx *Transaction) error {
+	exists, err := TransactionExists(tx.TxID, tx.Vout)
+	if err != nil {
+		return fmt.Errorf("error checking transaction existence: %v", err)
+	}
+
+	if exists {
+		// Transaction already exists, skip saving
+		log.Printf("Transaction %s:%d already exists, skipping", tx.TxID, tx.Vout)
+		return nil
+	}
+
+	ss, err := Store.LoadSnapshot(0)
+	if err != nil {
+		return fmt.Errorf("failed to load snapshot: %v", err)
+	}
+
+	// Get both transaction trees
+	txTree, err := ss.GetTree("transactions")
+	if err != nil {
+		return fmt.Errorf("failed to get transactions tree: %v", err)
+	}
+
+	unsentTxTree, err := ss.GetTree(UnsentTransactionsTree)
+	if err != nil {
+		return fmt.Errorf("failed to get unsent transactions tree: %v", err)
+	}
+
+	// Create unique key using TxID and Vout
+	key := fmt.Sprintf("%s:%d", tx.TxID, tx.Vout)
+	value, err := json.Marshal(tx)
+	if err != nil {
+		return fmt.Errorf("failed to marshal transaction: %v", err)
+	}
+
+	// Save to both trees
+	if err := txTree.Put([]byte(key), value); err != nil {
+		return fmt.Errorf("failed to save to main transaction tree: %v", err)
+	}
+
+	if err := unsentTxTree.Put([]byte(key), value); err != nil {
+		return fmt.Errorf("failed to save to unsent transaction tree: %v", err)
+	}
+
+	_, err = graviton.Commit(txTree, unsentTxTree)
+	if err != nil {
+		return fmt.Errorf("failed to commit transaction trees: %v", err)
+	}
+
+	log.Printf("Saved new transaction %s:%d", tx.TxID, tx.Vout)
+	return nil
+}
+
+// GetUnsentTransactions retrieves all unsent transactions
+func GetUnsentTransactions() ([]Transaction, error) {
+	ss, err := Store.LoadSnapshot(0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load snapshot: %v", err)
+	}
+
+	unsentTxTree, err := ss.GetTree(UnsentTransactionsTree)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get unsent transactions tree: %v", err)
+	}
+
+	var transactions []Transaction
+	cursor := unsentTxTree.Cursor()
+
+	for _, v, err := cursor.First(); err == nil; _, v, err = cursor.Next() {
+		var tx Transaction
+		if err := json.Unmarshal(v, &tx); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal transaction: %v", err)
+		}
+		transactions = append(transactions, tx)
+	}
+
+	return transactions, nil
+}
+
+// ClearUnsentTransactions removes transactions from the unsent tree
+func ClearUnsentTransactions() error {
+	ss, err := Store.LoadSnapshot(0)
+	if err != nil {
+		return fmt.Errorf("failed to load snapshot: %v", err)
+	}
+
+	unsentTxTree, err := ss.GetTree(UnsentTransactionsTree)
+	if err != nil {
+		return fmt.Errorf("failed to get unsent transactions tree: %v", err)
+	}
+
+	cursor := unsentTxTree.Cursor()
+	for k, _, err := cursor.First(); err == nil; k, _, err = cursor.Next() {
+		if err := unsentTxTree.Delete(k); err != nil {
+			return fmt.Errorf("failed to delete transaction: %v", err)
+		}
+	}
+
+	_, err = graviton.Commit(unsentTxTree)
+	if err != nil {
+		return fmt.Errorf("failed to commit cleared transactions: %v", err)
+	}
+
+	return nil
+}
+
+func TransactionExists(txID string, vout uint32) (bool, error) {
+	ss, err := Store.LoadSnapshot(0)
+	if err != nil {
+		return false, fmt.Errorf("failed to load snapshot: %v", err)
+	}
+
+	// Check main transactions tree
+	txTree, err := ss.GetTree("transactions")
+	if err != nil {
+		return false, fmt.Errorf("failed to get transactions tree: %v", err)
+	}
+
+	key := fmt.Sprintf("%s:%d", txID, vout)
+	_, err = txTree.Get([]byte(key))
+	if err == nil {
+		// Transaction found in main tree
+		return true, nil
+	} else if err != graviton.ErrNotFound {
+		// An error other than "not found" occurred
+		return false, fmt.Errorf("error checking main transactions tree: %v", err)
+	}
+
+	// Check unsent transactions tree
+	unsentTxTree, err := ss.GetTree(UnsentTransactionsTree)
+	if err != nil {
+		return false, fmt.Errorf("failed to get unsent transactions tree: %v", err)
+	}
+
+	_, err = unsentTxTree.Get([]byte(key))
+	if err == nil {
+		// Transaction found in unsent tree
+		return true, nil
+	} else if err != graviton.ErrNotFound {
+		// An error other than "not found" occurred
+		return false, fmt.Errorf("error checking unsent transactions tree: %v", err)
+	}
+
+	// Transaction not found in either tree
+	return false, nil
 }

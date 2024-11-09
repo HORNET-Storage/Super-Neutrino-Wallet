@@ -13,6 +13,7 @@ import (
 	"time"
 
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/addresses"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/lib/rescanner"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcwallet/chain"
@@ -63,26 +64,102 @@ func PerformRescanAndProcessTransactions(w *wallet.Wallet, chainClient *chain.Ne
 }
 
 func FormatAndTransmitTransactions(w *wallet.Wallet, walletName string) {
-	log.Println("Listing transactions after rescan...")
+	log.Println("Processing new transactions...")
 
-	formattedTransactions, err := FormatTransactions(w, walletName)
+	// First, save any new transactions
+	err := saveNewTransactions(w, walletName)
 	if err != nil {
-		log.Printf("couldn't format transactions %v", err)
+		log.Printf("Error saving new transactions: %v", err)
+		return
 	}
 
-	// Print transactions for verification
-	for _, tx := range formattedTransactions {
-		log.Printf("WTxId: %s", tx["address"])
-		log.Printf("Date: %s", tx["date"])
-		log.Printf("Output: %s", tx["output"])
-		log.Printf("Value: %s\n", tx["value"])
-	}
-
-	// Send transactions to backend
-	err = SendTransactionsToBackend(formattedTransactions)
+	// Then send unsent transactions to backend
+	err = sendUnsentTransactions()
 	if err != nil {
 		log.Printf("Error sending transactions to backend: %v", err)
 	}
+}
+
+func saveNewTransactions(w *wallet.Wallet, walletName string) error {
+	transactions, err := w.ListAllTransactions()
+	if err != nil {
+		return fmt.Errorf("error listing transactions: %v", err)
+	}
+
+	var newTxCount int
+	for _, tx := range transactions {
+		// Create transaction record
+		transaction := &walletstatedb.Transaction{
+			TxID:        tx.TxID,
+			WalletName:  walletName,
+			Address:     tx.TxID + ":" + strconv.FormatUint(uint64(tx.Vout), 10),
+			Output:      tx.Address,
+			Value:       fmt.Sprintf("%.8f", tx.Amount),
+			Date:        time.Unix(tx.Time, 0),
+			BlockHeight: tx.BlockHeight,
+			Vout:        tx.Vout,
+		}
+
+		// Save only if it's a new transaction
+		err = walletstatedb.SaveNewTransaction(transaction)
+		if err != nil {
+			return fmt.Errorf("error saving transaction: %v", err)
+		} else {
+			newTxCount++
+		}
+	}
+
+	if newTxCount > 0 {
+		log.Printf("Found and saved %d new transactions", newTxCount)
+	}
+
+	return nil
+}
+
+func sendUnsentTransactions() error {
+	// Get unsent transactions
+	unsentTxs, err := walletstatedb.GetUnsentTransactions()
+	if err != nil {
+		return fmt.Errorf("error getting unsent transactions: %v", err)
+	}
+
+	if len(unsentTxs) == 0 {
+		log.Println("No unsent transactions to process")
+		return nil
+	}
+
+	// Format transactions for backend
+	var formattedTxs []map[string]interface{}
+	for _, tx := range unsentTxs {
+		formattedTx := map[string]interface{}{
+			"wallet_name": tx.WalletName,
+			"address":     tx.Address,
+			"date":        tx.Date.Format(time.RFC3339),
+			"output":      tx.Output,
+			"value":       tx.Value,
+		}
+		formattedTxs = append(formattedTxs, formattedTx)
+	}
+
+	// Send to backend
+	jsonData, err := json.Marshal(formattedTxs)
+	if err != nil {
+		return fmt.Errorf("error marshaling transactions: %v", err)
+	}
+
+	err = sendToBackend("/api/wallet/transactions", jsonData)
+	if err != nil {
+		return fmt.Errorf("error sending transactions to backend: %v", err)
+	}
+
+	// Clear sent transactions
+	err = walletstatedb.ClearUnsentTransactions()
+	if err != nil {
+		return fmt.Errorf("error clearing unsent transactions: %v", err)
+	}
+
+	log.Printf("Successfully sent and cleared %d transactions", len(formattedTxs))
+	return nil
 }
 
 func FormatTransactions(w *wallet.Wallet, serverwWalletName string) ([]map[string]interface{}, error) {
@@ -149,29 +226,47 @@ func FetchAndSendWalletBalance(w *wallet.Wallet, walletName string) error {
 }
 
 func SendReceiveAddressesToBackend(walletName string) error {
-	// Retrieve the receive addresses
-	receiveAddresses, _, err := walletstatedb.RetrieveAddresses()
+	// Get unsent addresses instead of all addresses
+	unsentAddresses, err := addresses.GetUnsentAddresses()
 	if err != nil {
-		return fmt.Errorf("error retrieving receive addresses: %v", err)
+		return fmt.Errorf("error retrieving unsent addresses: %v", err)
+	}
+
+	// If there are no unsent addresses, return early
+	if len(unsentAddresses) == 0 {
+		log.Println("No unsent addresses to send")
+		return nil
 	}
 
 	// Prepare the data to send
-	var addresses []map[string]string
-	for i, addr := range receiveAddresses {
-		addresses = append(addresses, map[string]string{
+	var addressList []map[string]string
+	for i, addr := range unsentAddresses {
+		addressList = append(addressList, map[string]string{
 			"index":       fmt.Sprintf("%d", i),
-			"address":     addr.EncodeAddress(),
+			"address":     addr.Address,
 			"wallet_name": walletName,
 		})
 	}
 
-	jsonData, err := json.Marshal(addresses)
+	jsonData, err := json.Marshal(addressList)
 	if err != nil {
 		return fmt.Errorf("error marshaling addresses: %v", err)
 	}
 
-	// Use the sendToBackend function we created earlier
-	return sendToBackend("/api/wallet/addresses", jsonData)
+	// Send addresses to backend
+	err = sendToBackend("/api/wallet/addresses", jsonData)
+	if err != nil {
+		return fmt.Errorf("error sending addresses to backend: %v", err)
+	}
+
+	// Clear the unsent addresses after successful send
+	err = addresses.ClearUnsentAddresses()
+	if err != nil {
+		return fmt.Errorf("error clearing unsent addresses: %v", err)
+	}
+
+	log.Printf("Successfully sent and cleared %d addresses", len(addressList))
+	return nil
 }
 
 func sendToBackend(endpoint string, data []byte) error {

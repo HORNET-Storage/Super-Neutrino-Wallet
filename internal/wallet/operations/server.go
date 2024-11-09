@@ -80,6 +80,7 @@ func (s *WalletServer) StartHTTPSServer() error {
 	// Wrap your handlers with the CORS middleware
 	http.HandleFunc("/transaction", s.API.CORSMiddleware(s.API.JWTMiddleware(s.API.TransactionHandler)))
 	http.HandleFunc("/calculate-tx-size", s.API.CORSMiddleware(s.API.JWTMiddleware(s.API.HandleTransactionSizeEstimate)))
+	http.HandleFunc("/generate-addresses", s.API.CORSMiddleware(s.API.WalletAPIMiddleware(s.API.HandleAddressGeneration)))
 
 	// Route for challenge generation
 	http.HandleFunc("/challenge", s.API.CORSMiddleware(s.API.HandleChallengeRequest))
