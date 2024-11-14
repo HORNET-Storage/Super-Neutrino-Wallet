@@ -636,37 +636,32 @@ func TransactionExists(txID string, vout uint32) (bool, error) {
 		return false, fmt.Errorf("failed to load snapshot: %v", err)
 	}
 
-	// Check main transactions tree
 	txTree, err := ss.GetTree("transactions")
 	if err != nil {
 		return false, fmt.Errorf("failed to get transactions tree: %v", err)
 	}
 
 	key := fmt.Sprintf("%s:%d", txID, vout)
-	_, err = txTree.Get([]byte(key))
-	if err == nil {
-		// Transaction found in main tree
-		return true, nil
-	} else if err != graviton.ErrNotFound {
-		// An error other than "not found" occurred
-		return false, fmt.Errorf("error checking main transactions tree: %v", err)
+
+	// Use cursor to iterate instead of direct Get to avoid hash collision issues
+	cursor := txTree.Cursor()
+	for k, _, err := cursor.First(); err == nil; k, _, err = cursor.Next() {
+		if string(k) == key {
+			return true, nil
+		}
 	}
 
-	// Check unsent transactions tree
 	unsentTxTree, err := ss.GetTree(UnsentTransactionsTree)
 	if err != nil {
 		return false, fmt.Errorf("failed to get unsent transactions tree: %v", err)
 	}
 
-	_, err = unsentTxTree.Get([]byte(key))
-	if err == nil {
-		// Transaction found in unsent tree
-		return true, nil
-	} else if err != graviton.ErrNotFound {
-		// An error other than "not found" occurred
-		return false, fmt.Errorf("error checking unsent transactions tree: %v", err)
+	cursor = unsentTxTree.Cursor()
+	for k, _, err := cursor.First(); err == nil; k, _, err = cursor.Next() {
+		if string(k) == key {
+			return true, nil
+		}
 	}
 
-	// Transaction not found in either tree
 	return false, nil
 }
