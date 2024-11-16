@@ -45,11 +45,17 @@ func interactiveMode() {
 			err := creation.CreateNewWallet(reader)
 			if err != nil {
 				log.Printf("Error setting up new wallet: %s", err)
+			} else {
+				fmt.Println("\nWallet created successfully! Please restart the program to login.")
+				return
 			}
 		case "2":
 			err := creation.ExistingWallet(reader)
 			if err != nil {
 				log.Printf("Error setting up wallet: %s", err)
+			} else {
+				fmt.Println("\nWallet imported successfully! Please restart the program to login.")
+				return
 			}
 		case "3":
 			err := auth.OpenAndloadWallet(reader, viper.GetString("base_dir"))

@@ -330,6 +330,22 @@ func DeleteWalletFiles(walletName string) error {
 		log.Printf("Successfully deleted .env file: %s", envFile)
 	}
 
+	//  // Clean up contents within Neutrino DB directory
+	//  neutrinoFiles := []string{
+	//     filepath.Join(neutrinoDbDir, "block_headers.bin"),
+	//     filepath.Join(neutrinoDbDir, "neutrino.db"),
+	//     filepath.Join(neutrinoDbDir, "reg_filter_headers.bin"),
+	//     neutrinoWalletDir, // Include the wallet-specific directory
+	// }
+
+	// for _, file := range neutrinoFiles {
+	//     if err := os.RemoveAll(file); err != nil && !os.IsNotExist(err) {
+	//         log.Printf("Failed to delete Neutrino file/directory: %v", err)
+	//     } else {
+	//         log.Printf("Successfully deleted Neutrino file/directory: %s", file)
+	//     }
+	// }
+
 	// Delete the Neutrino wallet directory and its contents
 	if err := os.RemoveAll(neutrinoWalletDir); err != nil {
 		log.Printf("Failed to delete Neutrino wallet directory: %v", err)
