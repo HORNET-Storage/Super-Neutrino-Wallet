@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -147,18 +148,31 @@ func sendUnsentTransactions() error {
 		return fmt.Errorf("error marshaling transactions: %v", err)
 	}
 
-	err = sendToBackend("/api/wallet/transactions", jsonData)
+	responseBody, err := sendToBackend("/api/wallet/transactions", jsonData)
 	if err != nil {
 		return fmt.Errorf("error sending transactions to backend: %v", err)
 	}
 
-	// Clear sent transactions
+	// Parse response
+	var result struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(responseBody, &result); err != nil {
+		return fmt.Errorf("error parsing backend response: %v", err)
+	}
+
+	if result.Status != "success" {
+		return fmt.Errorf("backend returned non-success status: %s - %s", result.Status, result.Message)
+	}
+
+	// Only clear transactions after confirmed success
 	err = walletstatedb.ClearUnsentTransactions()
 	if err != nil {
 		return fmt.Errorf("error clearing unsent transactions: %v", err)
 	}
 
-	log.Printf("Successfully sent and cleared %d transactions", len(formattedTxs))
+	log.Printf("Successfully sent and cleared %d transactions: %s", len(formattedTxs), result.Message)
 	return nil
 }
 
@@ -194,7 +208,25 @@ func SendTransactionsToBackend(transactions []map[string]interface{}) error {
 		return fmt.Errorf("error marshaling transactions: %v", err)
 	}
 
-	return sendToBackend("/api/wallet/transactions", jsonData)
+	responseBody, err := sendToBackend("/api/wallet/transactions", jsonData)
+	if err != nil {
+		return fmt.Errorf("error sending transactions to backend: %v", err)
+	}
+
+	var result struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(responseBody, &result); err != nil {
+		return fmt.Errorf("error parsing backend response: %v", err)
+	}
+
+	if result.Status != "success" {
+		return fmt.Errorf("backend returned non-success status: %s - %s", result.Status, result.Message)
+	}
+
+	log.Printf("Successfully sent transactions: %s", result.Message)
+	return nil
 }
 
 func FetchAndSendWalletBalance(w *wallet.Wallet, walletName string) error {
@@ -212,7 +244,7 @@ func FetchAndSendWalletBalance(w *wallet.Wallet, walletName string) error {
 
 	// Prepare data for sending
 	data := map[string]interface{}{
-		"wallet_name": walletName, // Include wallet name in the payload
+		"wallet_name": walletName,
 		"balance":     walletBalance,
 	}
 
@@ -222,26 +254,41 @@ func FetchAndSendWalletBalance(w *wallet.Wallet, walletName string) error {
 		return fmt.Errorf("error marshaling balance data: %v", err)
 	}
 
-	return sendToBackend("/api/wallet/balance", jsonData)
+	responseBody, err := sendToBackend("/api/wallet/balance", jsonData)
+	if err != nil {
+		return fmt.Errorf("error sending balance to backend: %v", err)
+	}
+
+	var result struct {
+		Message string `json:"message"`
+		Balance string `json:"balance"`
+	}
+	if err := json.Unmarshal(responseBody, &result); err != nil {
+		return fmt.Errorf("error parsing backend response: %v", err)
+	}
+
+	if result.Message != "success" {
+		return fmt.Errorf("backend returned non-success message: %s", result.Message)
+	}
+
+	log.Printf("Successfully sent wallet balance: %s", result.Balance)
+	return nil
 }
 
 func SendReceiveAddressesToBackend(walletName string) error {
-	// Get unsent addresses instead of all addresses
 	unsentAddresses, err := addresses.GetUnsentAddresses()
 	if err != nil {
 		return fmt.Errorf("error retrieving unsent addresses: %v", err)
 	}
 
-	// If there are no unsent addresses, return early
 	if len(unsentAddresses) == 0 {
 		log.Println("No unsent addresses to send")
 		return nil
 	}
 
-	// Prepare the data to send
-	var addressList []map[string]string
+	var addressList []map[string]interface{}
 	for i, addr := range unsentAddresses {
-		addressList = append(addressList, map[string]string{
+		addressList = append(addressList, map[string]interface{}{
 			"index":       fmt.Sprintf("%d", i),
 			"address":     addr.Address,
 			"wallet_name": walletName,
@@ -253,23 +300,33 @@ func SendReceiveAddressesToBackend(walletName string) error {
 		return fmt.Errorf("error marshaling addresses: %v", err)
 	}
 
-	// Send addresses to backend
-	err = sendToBackend("/api/wallet/addresses", jsonData)
+	responseBody, err := sendToBackend("/api/wallet/addresses", jsonData)
 	if err != nil {
-		return fmt.Errorf("error sending addresses to backend: %v", err)
+		return fmt.Errorf("backend request failed: %v", err)
 	}
 
-	// Clear the unsent addresses after successful send
-	err = addresses.ClearUnsentAddresses()
-	if err != nil {
+	var result struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(responseBody, &result); err != nil {
+		return fmt.Errorf("error parsing backend response: %v", err)
+	}
+
+	if result.Status != "success" {
+		return fmt.Errorf("backend returned non-success status: %s - %s", result.Status, result.Message)
+	}
+
+	// Only clear addresses after confirming success
+	if err := addresses.ClearUnsentAddresses(); err != nil {
 		return fmt.Errorf("error clearing unsent addresses: %v", err)
 	}
 
-	log.Printf("Successfully sent and cleared %d addresses", len(addressList))
+	log.Printf("Successfully sent and cleared %d addresses: %s", len(addressList), result.Message)
 	return nil
 }
 
-func sendToBackend(endpoint string, data []byte) error {
+func sendToBackend(endpoint string, data []byte) ([]byte, error) {
 	backendURL := viper.GetString("relay_backend_url")
 	if backendURL == "" {
 		log.Println("Using default value, not config.json values.")
@@ -282,7 +339,7 @@ func sendToBackend(endpoint string, data []byte) error {
 
 	req, err := http.NewRequest("POST", backendURL+endpoint, bytes.NewBuffer(data))
 	if err != nil {
-		return fmt.Errorf("error creating request: %v", err)
+		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -293,16 +350,21 @@ func sendToBackend(endpoint string, data []byte) error {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("error sending request to backend: %v", err)
+		return nil, fmt.Errorf("error sending request to backend: %v", err)
 	}
 	defer resp.Body.Close()
 
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %v", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("backend returned non-OK status: %v", resp.Status)
+		return responseBody, fmt.Errorf("backend returned non-OK status: %v, body: %s", resp.Status, string(responseBody))
 	}
 
 	log.Println("Data sent successfully to backend")
-	return nil
+	return responseBody, nil
 }
 
 func generateSignature(apiKey, timestamp string, data []byte) string {
