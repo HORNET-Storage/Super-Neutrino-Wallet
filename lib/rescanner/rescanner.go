@@ -3,6 +3,11 @@ package rescanner
 import (
 	"fmt"
 	"log"
+	"math"
+	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/logger"
@@ -19,15 +24,15 @@ import (
 )
 
 func PerformRescan(config RescanConfig) error {
-	log.Println("Starting transaction recovery process")
-	logger.Info("Starting transaction recovery process")
+	log.Println("Starting optimized transaction recovery process")
+	logger.Info("Starting optimized transaction recovery process")
 
 	// Check for nil values early
 	if config.Wallet == nil || config.ChainClient == nil {
 		return fmt.Errorf("wallet or ChainClient is nil, cannot proceed with rescan")
 	}
 
-	// Parse last sync time from the config
+	// Parse last sync time from the config for adaptive timeout
 	lastSyncTimeStr := viper.GetString("last_sync_time")
 	var syncTimeoutDuration time.Duration
 
@@ -40,46 +45,33 @@ func PerformRescan(config RescanConfig) error {
 			log.Printf("Error parsing last sync time: %v", err)
 			syncTimeoutDuration = 1 * time.Minute
 		} else {
-			// If the last sync was more than 8 hours ago, set timeout to 1 minute
-			if time.Since(lastSyncTime) > 8*time.Hour {
-				syncTimeoutDuration = 1 * time.Minute
-			} else {
-				// Otherwise, set timeout to 30 seconds
-				syncTimeoutDuration = 30 * time.Second
+			// Use adaptive timeout based on last sync time
+			hoursSinceSync := time.Since(lastSyncTime).Hours()
+			switch {
+			case hoursSinceSync > 24:
+				syncTimeoutDuration = 2 * time.Minute // Long time since sync
+			case hoursSinceSync > 8:
+				syncTimeoutDuration = 1 * time.Minute // Moderate time since sync
+			default:
+				syncTimeoutDuration = 30 * time.Second // Recent sync
 			}
 		}
 	}
 
-	// Create a channel to capture any errors from the goroutine
-	syncErrChan := make(chan error, 1)
-
-	// Start the wallet synchronization process in a goroutine
+	// Use a quick initial sync to get the basic wallet state
+	log.Println("Performing quick initial synchronization...")
+	initialSyncDone := make(chan struct{})
 	go func() {
-		defer close(syncErrChan)
+		defer close(initialSyncDone)
 		config.Wallet.SynchronizeRPC(config.ChainClient)
 	}()
 
 	// Wait for initial sync to complete or timeout
-	syncTimeout := time.After(5 * time.Second)
-SyncLoop:
-	for {
-		select {
-		case err := <-syncErrChan:
-			if err != nil {
-				log.Printf("Error in wallet synchronization: %v", err)
-				logger.Error("Error in wallet synchronization: ", err)
-				break SyncLoop
-			}
-		case <-syncTimeout:
-			log.Println("Initial sync timeout reached, proceeding with address scanning")
-			break SyncLoop
-		default:
-			if !config.Wallet.SynchronizingToNetwork() {
-				log.Println("Initial sync completed, proceeding with address scanning")
-				break SyncLoop
-			}
-			time.Sleep(time.Second)
-		}
+	select {
+	case <-time.After(5 * time.Second):
+		log.Println("Initial sync timeout reached, proceeding with address scanning")
+	case <-initialSyncDone:
+		log.Println("Initial sync completed, proceeding with address scanning")
 	}
 
 	// Retrieve all addresses from the wallet
@@ -88,11 +80,12 @@ SyncLoop:
 		return fmt.Errorf("failed to get addresses from wallet: %v", err)
 	}
 
-	log.Printf("Rescanning with %d addresses", len(allAddresses))
-	logger.Info("Rescanning addresses: ", len(allAddresses))
+	addrCount := len(allAddresses)
+	log.Printf("Optimized rescanning for %d addresses", addrCount)
+	logger.Info(fmt.Sprintf("Rescanning %d addresses", addrCount))
 
 	// Create a map of addresses for faster lookup
-	walletAddressMap := make(map[string]bool)
+	walletAddressMap := make(map[string]bool, addrCount)
 	for _, addr := range allAddresses {
 		walletAddressMap[addr.EncodeAddress()] = true
 	}
@@ -106,41 +99,147 @@ SyncLoop:
 	// Create a RescanChainSource from the ChainClient
 	chainSource := &neutrino.RescanChainSource{ChainService: config.ChainClient.CS}
 
+	// Create a single quit channel for all rescans
 	quit := make(chan struct{})
 	defer close(quit)
 
-	// Rescan addresses
-	log.Println("Starting address scanning...")
-	logger.Info("Starting address scanning...")
+	// --- Optimized Address Batch Processing ---
 
+	// Calculate optimal batch size
+	batchSize := calculateOptimalBatchSize(addrCount)
+	log.Printf("Using batch size of %d addresses for optimal scanning", batchSize)
+
+	// Create a thread-safe transaction map with mutex protection
+	var txMutex sync.Mutex
 	knownTxs := make(map[chainhash.Hash]*btcutil.Tx)
-	for _, addr := range allAddresses {
-		err := rescanAddress(chainSource, addr.String(), config.StartBlock, bestHeight, quit, knownTxs)
-		if err != nil {
-			log.Printf("Error scanning address %s: %v", addr.String(), err)
-			continue
+
+	// Calculate optimal worker count (based on CPU cores, but limit to avoid network saturation)
+	numWorkers := runtime.NumCPU()
+	if numWorkers > 4 {
+		numWorkers = 4 // Cap at 4 to prevent too many concurrent network requests
+	}
+	log.Printf("Using %d parallel workers for batch processing", numWorkers)
+
+	// Divide addresses into batches
+	batches := createAddressBatches(allAddresses, batchSize)
+	log.Printf("Created %d address batches for parallel processing", len(batches))
+
+	// Create work channel for batches
+	batchChan := make(chan []btcutil.Address, len(batches))
+
+	// Create wait group for workers
+	var wg sync.WaitGroup
+	wg.Add(numWorkers)
+
+	// Create error channel to collect worker errors
+	errorChan := make(chan error, len(batches))
+
+	// Progress tracking
+	var processedAddresses int32
+	startTime := time.Now()
+	progressTicker := time.NewTicker(10 * time.Second)
+	defer progressTicker.Stop()
+
+	// Progress reporting goroutine
+	go func() {
+		for range progressTicker.C {
+			processed := atomic.LoadInt32(&processedAddresses)
+			if processed >= int32(addrCount) {
+				return
+			}
+
+			percent := float64(processed) / float64(addrCount) * 100
+			elapsed := time.Since(startTime)
+			estimatedTotal := float64(elapsed) / (float64(processed) / float64(addrCount))
+			estimatedRemaining := time.Duration(estimatedTotal) - elapsed
+
+			log.Printf("Progress: %.1f%% (%d/%d addresses) - Est. remaining: %v",
+				percent, processed, addrCount, estimatedRemaining.Round(time.Second))
 		}
-		logger.Info(fmt.Sprintf("Rescan completed for address %s", addr))
+	}()
+
+	// Start worker goroutines
+	for i := 0; i < numWorkers; i++ {
+		workerID := i
+		go func() {
+			defer wg.Done()
+
+			// Worker-local transaction cache to reduce mutex contention
+			localTxCache := make(map[chainhash.Hash]*btcutil.Tx)
+
+			for batch := range batchChan {
+				batchSize := len(batch)
+				log.Printf("Worker %d processing batch of %d addresses", workerID, batchSize)
+
+				// Process the batch
+				err := processBatch(chainSource, batch, config.StartBlock, bestHeight, quit, localTxCache)
+				if err != nil {
+					errorChan <- fmt.Errorf("worker %d batch error: %w", workerID, err)
+					// Continue to next batch even on error
+				}
+
+				// Update progress counter
+				atomic.AddInt32(&processedAddresses, int32(batchSize))
+			}
+
+			// Merge worker's transaction cache into global cache
+			txMutex.Lock()
+			for hash, tx := range localTxCache {
+				knownTxs[hash] = tx
+			}
+			txMutex.Unlock()
+		}()
 	}
 
-	logger.Info("Address scanning complete...")
+	// Send all batches to the workers
+	for _, batch := range batches {
+		batchChan <- batch
+	}
+	close(batchChan)
+
+	// Wait for all workers to complete
+	wg.Wait()
+	close(errorChan)
+
+	// Check for errors
+	errorCount := 0
+	for err := range errorChan {
+		errorCount++
+		log.Printf("Batch scan error: %v", err)
+	}
+
+	if errorCount > 0 {
+		log.Printf("Completed address scanning with %d errors", errorCount)
+		logger.Info(fmt.Sprintf("Address scanning completed with %d errors", errorCount))
+	} else {
+		log.Println("All address batches scanned successfully")
+		logger.Info("Address scanning completed successfully")
+	}
+
+	// Log completion stats
+	totalTime := time.Since(startTime)
+	log.Printf("Address scanning completed in %v (%.1f addresses/sec)",
+		totalTime, float64(addrCount)/totalTime.Seconds())
 
 	// Wait for full synchronization to complete or timeout
+	log.Printf("Waiting up to %v for final wallet synchronization...", syncTimeoutDuration)
 	fullSyncTimeout := time.After(syncTimeoutDuration)
+	syncCheckTicker := time.NewTicker(1 * time.Second)
+	defer syncCheckTicker.Stop()
+
 FullSyncLoop:
 	for {
 		select {
 		case <-fullSyncTimeout:
-			log.Println("Wallet synchronization timed out, but address scanning completed")
+			log.Println("Final wallet synchronization timed out, but address scanning completed")
 			logger.Info("Wallet synchronization timed out, but address scanning completed")
 			break FullSyncLoop
-		default:
+		case <-syncCheckTicker.C:
 			if !config.Wallet.SynchronizingToNetwork() {
-				log.Println("Wallet synchronization completed successfully")
+				log.Println("Final wallet synchronization completed successfully")
 				logger.Info("Wallet synchronization completed successfully")
 				break FullSyncLoop
 			}
-			time.Sleep(time.Second)
 		}
 	}
 
@@ -150,98 +249,213 @@ FullSyncLoop:
 		log.Printf("Error updating last sync time: %v", err)
 	}
 
-	// After synchronization, get the updated balance from our database
+	// Get the updated balance
 	balance, err := config.Wallet.CalculateBalance(1)
 	if err != nil {
 		return fmt.Errorf("failed to get wallet balance: %v", err)
 	}
 
-	log.Printf("Final wallet balance after rescan: %d satoshis", balance)
-	log.Println("Transaction recovery process completed")
+	log.Printf("Final wallet balance after optimized rescan: %d satoshis", balance)
+	log.Printf("Transaction recovery process completed in %v", time.Since(startTime))
 	logger.Info("Transaction recovery process completed")
 
 	return nil
 }
 
-func rescanAddress(cs *neutrino.RescanChainSource, address string, startHeight, endHeight int32, quit chan struct{}, knownTxs map[chainhash.Hash]*btcutil.Tx) error {
-	addr, err := btcutil.DecodeAddress(address, &chaincfg.MainNetParams)
-	if err != nil {
-		return err
+// calculateOptimalBatchSize determines the optimal batch size based on address count
+func calculateOptimalBatchSize(addressCount int) int {
+	switch {
+	case addressCount > 1000:
+		return 40 // Very large wallets: larger batches
+	case addressCount > 500:
+		return 30 // Large wallets
+	case addressCount > 100:
+		return 20 // Medium wallets
+	case addressCount > 50:
+		return 10 // Smaller wallets
+	default:
+		return 5 // Very small wallets: smaller batches for better responsiveness
+	}
+}
+
+// createAddressBatches divides addresses into batches of the specified size
+func createAddressBatches(addresses []btcutil.Address, batchSize int) [][]btcutil.Address {
+	// Calculate how many batches we'll need
+	batchCount := (len(addresses) + batchSize - 1) / batchSize
+
+	// Create the batch slices
+	batches := make([][]btcutil.Address, 0, batchCount)
+
+	for i := 0; i < len(addresses); i += batchSize {
+		end := i + batchSize
+		if end > len(addresses) {
+			end = len(addresses)
+		}
+		batches = append(batches, addresses[i:end])
 	}
 
+	return batches
+}
+
+// processBatch scans a batch of addresses in a single operation
+func processBatch(cs *neutrino.RescanChainSource, batch []btcutil.Address, startHeight, endHeight int32,
+	quit chan struct{}, knownTxs map[chainhash.Hash]*btcutil.Tx) error {
+
+	// Skip empty batches
+	if len(batch) == 0 {
+		return nil
+	}
+
+	// Create a channel to track transaction discovery
+	txFoundChan := make(chan struct{}, 1)
+	txFound := false
+
+	// Log addresses in this batch (only in debug mode to avoid cluttering logs)
+	addrStrings := make([]string, 0, len(batch))
+	for _, addr := range batch {
+		addrStrings = append(addrStrings, addr.String())
+	}
+	log.Printf("Scanning batch with addresses: %s", strings.Join(addrStrings, ", "))
+
+	// Set up notification handlers with improved logging
 	ntfn := rpcclient.NotificationHandlers{
 		OnFilteredBlockConnected: func(height int32, header *wire.BlockHeader, txns []*btcutil.Tx) {
-			for _, tx := range txns {
-				knownTxs[*tx.Hash()] = tx
-				amountReceived, amountSent := calculateTransactionAmounts(tx, address, knownTxs)
+			// Progress logging (periodic)
+			if height%10000 == 0 || (height-startHeight) < 100 {
+				log.Printf("Scanning block %d for batch of %d addresses (%d/%d)",
+					height, len(batch), height-startHeight, endHeight-startHeight)
+			}
 
-				if amountReceived > 0 || amountSent > 0 {
-					log.Printf("Transaction found in block %d: %s", height, tx.Hash())
-					log.Printf("Received amount: %s, Sent amount: %s", amountReceived.String(), amountSent.String())
-					log.Println("Transaction date: ", header.Timestamp.Format("2006-01-02 15:04:05"))
+			for _, tx := range txns {
+				// Store all transactions so we can calculate inputs correctly
+				knownTxs[*tx.Hash()] = tx
+
+				// Check if this transaction is relevant to our batch
+
+				// Check outputs (receiving)
+				for _, txOut := range tx.MsgTx().TxOut {
+					_, addrs, _, err := txscript.ExtractPkScriptAddrs(txOut.PkScript, &chaincfg.MainNetParams)
+					if err != nil {
+						continue
+					}
+
+					for _, a := range addrs {
+						// Check if this address is in our batch
+						for _, batchAddr := range batch {
+							if a.EncodeAddress() == batchAddr.EncodeAddress() {
+								txFound = true
+								log.Printf("Transaction %s found for address %s in block %d",
+									tx.Hash(), a.EncodeAddress(), height)
+
+								// Signal that we found something
+								if !txFound {
+									txFound = true
+									select {
+									case txFoundChan <- struct{}{}:
+									default:
+									}
+								}
+							}
+						}
+					}
+				}
+
+				// Check inputs (spending)
+				for _, txIn := range tx.MsgTx().TxIn {
+					prevTx, ok := knownTxs[txIn.PreviousOutPoint.Hash]
+					if !ok {
+						continue
+					}
+
+					// Skip if the previous output index is out of range
+					if int(txIn.PreviousOutPoint.Index) >= len(prevTx.MsgTx().TxOut) {
+						continue
+					}
+
+					prevTxOut := prevTx.MsgTx().TxOut[txIn.PreviousOutPoint.Index]
+					_, addrs, _, err := txscript.ExtractPkScriptAddrs(prevTxOut.PkScript, &chaincfg.MainNetParams)
+					if err != nil {
+						continue
+					}
+
+					for _, a := range addrs {
+						// Check if this address is in our batch
+						for _, batchAddr := range batch {
+							if a.EncodeAddress() == batchAddr.EncodeAddress() {
+								txFound = true
+								log.Printf("Spending transaction %s found for address %s in block %d",
+									tx.Hash(), a.EncodeAddress(), height)
+
+								// Signal that we found something
+								if !txFound {
+									txFound = true
+									select {
+									case txFoundChan <- struct{}{}:
+									default:
+									}
+								}
+							}
+						}
+					}
 				}
 			}
 		},
 	}
 
+	// Calculate a dynamic timeout based on the block range
+	blockRange := endHeight - startHeight
+	scanTimeoutMinutes := 5 * time.Minute // Default 5 minutes
+	if blockRange > 10000 {
+		// For larger ranges, scale the timeout but cap it
+		scanTimeoutMinutes = time.Duration(math.Min(float64(blockRange)/1000, 20)) * time.Minute
+	}
+
+	// Configure rescan with optimized parameters for batch processing
 	rescan := neutrino.NewRescan(
 		cs,
 		neutrino.StartBlock(&headerfs.BlockStamp{Height: startHeight}),
 		neutrino.EndBlock(&headerfs.BlockStamp{Height: endHeight}),
-		neutrino.WatchAddrs(addr),
+		neutrino.WatchAddrs(batch...), // Pass all addresses in the batch
 		neutrino.NotificationHandlers(ntfn),
 		neutrino.QuitChan(quit),
 		neutrino.QueryOptions(
-			neutrino.NumRetries(10),
-			neutrino.Timeout(time.Minute*20),
+			neutrino.NumRetries(5),
+			neutrino.Timeout(time.Minute*5),
 		),
 	)
+
+	// Start the rescan process
+	log.Printf("Starting batch rescan for %d addresses from block %d to %d (timeout: %v)",
+		len(batch), startHeight, endHeight, scanTimeoutMinutes)
 	errChan := rescan.Start()
 
+	// Wait for completion or timeout
 	select {
 	case err := <-errChan:
 		if err != nil {
-			return fmt.Errorf("rescan error: %v", err)
+			return fmt.Errorf("batch rescan error: %w", err)
 		}
-		log.Printf("Rescan completed for address %s", address)
-	case <-time.After(time.Minute * 30): // Adjust timeout as needed
-		return fmt.Errorf("rescan timed out for address %s", address)
+		log.Printf("Batch rescan completed for %d addresses", len(batch))
+	case <-txFoundChan:
+		// If we found transactions, we can be a bit more patient
+		log.Printf("Found transactions for batch, extending timeout")
+		select {
+		case err := <-errChan:
+			if err != nil {
+				return fmt.Errorf("batch rescan error after finding tx: %w", err)
+			}
+			log.Printf("Batch rescan fully completed for %d addresses with transactions", len(batch))
+		case <-time.After(scanTimeoutMinutes + 2*time.Minute): // Give extra time since we found something
+			log.Printf("Extended batch rescan timeout - continuing with partial results")
+		case <-quit:
+			return fmt.Errorf("batch rescan was canceled")
+		}
+	case <-time.After(scanTimeoutMinutes):
+		log.Printf("Batch rescan timed out after %v", scanTimeoutMinutes)
+		return fmt.Errorf("batch rescan timed out for %d addresses", len(batch))
+	case <-quit:
+		return fmt.Errorf("batch rescan was canceled")
 	}
+
 	return nil
-}
-
-func calculateTransactionAmounts(tx *btcutil.Tx, address string, knownTxs map[chainhash.Hash]*btcutil.Tx) (btcutil.Amount, btcutil.Amount) {
-	amountReceived := btcutil.Amount(0)
-	amountSent := btcutil.Amount(0)
-
-	for _, txOut := range tx.MsgTx().TxOut {
-		_, addrs, _, err := txscript.ExtractPkScriptAddrs(txOut.PkScript, &chaincfg.MainNetParams)
-		if err != nil {
-			continue
-		}
-		for _, a := range addrs {
-			if a.EncodeAddress() == address {
-				amountReceived += btcutil.Amount(txOut.Value)
-			}
-		}
-	}
-
-	for _, txIn := range tx.MsgTx().TxIn {
-		prevTx, ok := knownTxs[txIn.PreviousOutPoint.Hash]
-		if !ok {
-			continue
-		}
-		prevTxOut := prevTx.MsgTx().TxOut[txIn.PreviousOutPoint.Index]
-		_, addrs, _, err := txscript.ExtractPkScriptAddrs(prevTxOut.PkScript, &chaincfg.MainNetParams)
-		if err != nil {
-			continue
-		}
-		for _, a := range addrs {
-			if a.EncodeAddress() == address {
-				amountSent += btcutil.Amount(prevTxOut.Value)
-			}
-		}
-	}
-
-	return amountReceived, amountSent
 }

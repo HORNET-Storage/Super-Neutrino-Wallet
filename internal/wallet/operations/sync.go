@@ -49,7 +49,7 @@ func (s *WalletServer) SyncBlockchain() {
 }
 
 func (s *WalletServer) StartSyncProcess() {
-	syncTicker := time.NewTicker(syncInterval)
+	syncTicker := time.NewTicker(baseSyncInterval)
 	defer syncTicker.Stop() // Ensure the ticker is properly stopped when done
 
 	for range syncTicker.C {
@@ -86,7 +86,7 @@ func (s *WalletServer) StartSyncProcess() {
 
 func (s *WalletServer) serverLoop() error {
 
-	syncTicker := time.NewTicker(syncInterval)
+	syncTicker := time.NewTicker(baseSyncInterval)
 
 	ipcServer, err := ipc.NewServer()
 	if err != nil {
