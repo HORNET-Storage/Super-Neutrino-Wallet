@@ -172,14 +172,23 @@ func InitializeWallet(seedPhrase string, pubPass []byte, privPass []byte, baseDi
 		log.Println("Using AddPeers from configuration")
 	}
 
+	// Configure larger cache sizes for better performance
+	// This dramatically improves filter lookup performance
+	filterCacheSize := neutrino.DefaultFilterCacheSize * 4  // 4x default
+	blockCacheSize := neutrino.DefaultBlockCacheSize * 4    // 4x default
+	
+	log.Printf("Using optimized filter cache size: %d bytes, block cache size: %d bytes",
+		filterCacheSize, blockCacheSize)
+	
+	// Create optimized Neutrino configuration
 	cfg := neutrino.Config{
 		DataDir:         neutrinoDBPath,
 		Database:        db,
 		ChainParams:     *chainParams,
 		AddPeers:        addPeers,
 		PersistToDisk:   true,
-		FilterCacheSize: neutrino.DefaultFilterCacheSize,
-		BlockCacheSize:  neutrino.DefaultBlockCacheSize,
+		FilterCacheSize: filterCacheSize,
+		BlockCacheSize:  blockCacheSize,
 	}
 
 	chainService, err := neutrino.NewChainService(cfg)
@@ -243,6 +252,7 @@ func isBirthdayToday(birthday time.Time) bool {
 		birthday.Day() == today.Day() &&
 		birthday.Year() == today.Year()
 }
+
 
 func InitialChainServiceSync(chainService *neutrino.ChainService) {
 	log.Println("Starting initial syncing process...")

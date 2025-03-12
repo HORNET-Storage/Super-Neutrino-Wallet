@@ -19,7 +19,12 @@ import (
 )
 
 const (
-	syncInterval      = 10 * time.Minute
+	// Sync intervals - optimized for better responsiveness and lower resource usage
+	baseSyncInterval  = 10 * time.Minute  // Base interval between syncs
+	minSyncInterval   = 2 * time.Minute   // Minimum interval for active wallets
+	maxSyncInterval   = 30 * time.Minute  // Maximum interval for inactive wallets
+	
+	// Server configuration
 	useHTTPS     bool = false
 )
 
