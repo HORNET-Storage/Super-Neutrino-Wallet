@@ -33,19 +33,28 @@ func PerformRescanAndProcessTransactions(w *wallet.Wallet, chainClient *chain.Ne
 
 	log.Println("Scanning from block", lastScannedBlockHeight)
 
-	// Determine if this is an imported wallet by checking the last scanned block height
-	// If the last scanned block height is more than a day old (approximately 144 blocks),
-	// it's likely an imported wallet with history
+	// Determine if this is a newly imported wallet by checking:
+	// 1. If the block height difference is significant (>144 blocks)
+	// 2. If there's no last sync time recorded (indicating first sync)
 	isImportedWallet := false
 
 	// Get the current best block height
 	_, bestHeight, err := chainClient.GetBestBlock()
 	if err == nil {
-		// If the starting block is more than 144 blocks in the past (approximately 1 day),
-		// consider it an imported wallet
-		if bestHeight-lastScannedBlockHeight > 144 {
+		// Check if the starting block is more than 144 blocks in the past (approximately 1 day)
+		blockHeightDifference := bestHeight - lastScannedBlockHeight
+		hasSignificantBlockDifference := blockHeightDifference > 144
+
+		// Check if this is the first sync (no last sync time recorded)
+		lastSyncTimeStr := viper.GetString("last_sync_time")
+		isFirstSync := lastSyncTimeStr == ""
+
+		// Only consider it a newly imported wallet if BOTH conditions are true
+		if hasSignificantBlockDifference && isFirstSync {
 			isImportedWallet = true
-			log.Println("Wallet starting from a block height more than a day old - using extended processing timeouts for imported wallet")
+			log.Println("Detected newly imported wallet (significant block difference and first sync) - using extended processing timeouts")
+		} else if hasSignificantBlockDifference {
+			log.Println("Wallet has significant block difference but has been synced before - using normal timeouts")
 		}
 	}
 
