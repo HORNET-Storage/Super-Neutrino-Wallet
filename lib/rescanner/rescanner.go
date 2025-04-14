@@ -18,6 +18,8 @@ import (
 	"github.com/btcsuite/btcd/rpcclient"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcwallet/chain"
+	"github.com/btcsuite/btcwallet/wallet"
 	"github.com/lightninglabs/neutrino"
 	"github.com/lightninglabs/neutrino/headerfs"
 	"github.com/spf13/viper"
@@ -65,27 +67,99 @@ func PerformRescan(config RescanConfig) error {
 		}
 	}
 
-	// Use a quick initial sync to get the basic wallet state
+	// Use a quick initial sync to get the basic wallet state with retry logic
 	log.Println("Performing quick initial synchronization...")
-	initialSyncDone := make(chan struct{})
-	go func() {
-		defer close(initialSyncDone)
-		config.Wallet.SynchronizeRPC(config.ChainClient)
-	}()
 
-	// Wait for initial sync to complete or timeout
-	// Use a longer timeout for imported wallets
+	// Define retry parameters
+	maxRetries := 3
+	var initialSyncErr error
+	var backoffDuration time.Duration
+
+	// Create a channel to signal sync completion or error
+	initialSyncDone := make(chan struct{})
+	syncErrChan := make(chan error, 1)
+
+	// Determine initial timeout based on wallet type
 	initialSyncTimeout := 5 * time.Second
 	if config.IsImportedWallet {
 		initialSyncTimeout = 1 * time.Minute // 1 minute for newly imported wallets
 		log.Println("Using extended initial sync timeout for newly imported wallet: 1 minute")
 	}
 
-	select {
-	case <-time.After(initialSyncTimeout):
-		log.Println("Initial sync timeout reached, proceeding with address scanning")
-	case <-initialSyncDone:
-		log.Println("Initial sync completed, proceeding with address scanning")
+	// Attempt synchronization with retry logic
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		log.Printf("Sync attempt %d of %d", attempt, maxRetries)
+
+		// Clear previous channels if this is a retry
+		if attempt > 1 {
+			initialSyncDone = make(chan struct{})
+			syncErrChan = make(chan error, 1)
+		}
+
+		// Start the sync in a goroutine with panic recovery
+		go func() {
+			defer close(initialSyncDone)
+
+			// Use recover to catch panics
+			defer func() {
+				if r := recover(); r != nil {
+					errMsg := fmt.Sprintf("Panic during wallet synchronization: %v", r)
+					log.Println(errMsg)
+					logger.Error(errMsg)
+					syncErrChan <- fmt.Errorf("%s", errMsg)
+				}
+			}()
+
+			// Attempt to synchronize
+			err := synchronizeWithRetry(config.Wallet, config.ChainClient)
+			if err != nil {
+				syncErrChan <- err
+			}
+		}()
+
+		// Wait for completion, timeout, or error
+		select {
+		case <-time.After(initialSyncTimeout):
+			if attempt == maxRetries {
+				log.Println("Final sync attempt timed out, proceeding with address scanning anyway")
+				initialSyncErr = fmt.Errorf("all sync attempts timed out")
+			} else {
+				log.Printf("Sync attempt %d timed out, retrying...", attempt)
+				// Exponential backoff
+				backoffDuration = time.Duration(attempt) * 2 * time.Second
+				log.Printf("Waiting %v before next attempt", backoffDuration)
+				time.Sleep(backoffDuration)
+				// Increase timeout for next attempt
+				initialSyncTimeout = initialSyncTimeout * 2
+			}
+		case err := <-syncErrChan:
+			if attempt == maxRetries {
+				log.Printf("Final sync attempt failed: %v, proceeding with address scanning anyway", err)
+				initialSyncErr = err
+			} else {
+				log.Printf("Sync attempt %d failed: %v, retrying...", attempt, err)
+				// Exponential backoff
+				backoffDuration = time.Duration(attempt) * 2 * time.Second
+				log.Printf("Waiting %v before next attempt", backoffDuration)
+				time.Sleep(backoffDuration)
+				// Increase timeout for next attempt
+				initialSyncTimeout = initialSyncTimeout * 2
+			}
+		case <-initialSyncDone:
+			log.Println("Initial sync completed successfully, proceeding with address scanning")
+			attempt = maxRetries + 1 // Break out of the retry loop
+		}
+
+		// Break if we've succeeded
+		if attempt > maxRetries {
+			break
+		}
+	}
+
+	// Log the final status
+	if initialSyncErr != nil {
+		log.Printf("Warning: Initial sync had issues: %v. Continuing with address scanning anyway.", initialSyncErr)
+		logger.Info("Warning: Initial sync had issues: " + initialSyncErr.Error() + ". Continuing with address scanning anyway.")
 	}
 
 	// Retrieve all addresses from the wallet
@@ -96,7 +170,7 @@ func PerformRescan(config RescanConfig) error {
 
 	addrCount := len(allAddresses)
 	log.Printf("Optimized rescanning for %d addresses", addrCount)
-	logger.Info(fmt.Sprintf("Rescanning %d addresses", addrCount))
+	logger.Info("Rescanning " + fmt.Sprintf("%d", addrCount) + " addresses")
 
 	// Create a map of addresses for faster lookup
 	walletAddressMap := make(map[string]bool, addrCount)
@@ -224,7 +298,7 @@ func PerformRescan(config RescanConfig) error {
 
 	if errorCount > 0 {
 		log.Printf("Completed address scanning with %d errors", errorCount)
-		logger.Info(fmt.Sprintf("Address scanning completed with %d errors", errorCount))
+		logger.Info("Address scanning completed with " + fmt.Sprintf("%d", errorCount) + " errors")
 	} else {
 		log.Println("All address batches scanned successfully")
 		logger.Info("Address scanning completed successfully")
@@ -328,6 +402,46 @@ func createAddressBatches(addresses []btcutil.Address, batchSize int) [][]btcuti
 	return batches
 }
 
+// synchronizeWithRetry attempts to synchronize the wallet with the chain client
+// with built-in error handling and recovery
+func synchronizeWithRetry(w *wallet.Wallet, chainClient *chain.NeutrinoClient) error {
+	// Create a channel to capture panics
+	panicChan := make(chan interface{}, 1)
+
+	// Run the synchronization in a separate goroutine with panic recovery
+	syncDone := make(chan struct{})
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				panicChan <- r
+			}
+			close(syncDone)
+		}()
+
+		// Attempt to synchronize with more detailed error handling
+		log.Println("Starting wallet synchronization...")
+
+		// Try to synchronize
+		w.SynchronizeRPC(chainClient)
+
+		log.Println("Wallet synchronization completed successfully")
+	}()
+
+	// Wait for either completion or panic
+	select {
+	case r := <-panicChan:
+		// Handle the panic
+		errMsg := fmt.Sprintf("Panic during wallet synchronization: %v", r)
+		log.Println(errMsg)
+		return fmt.Errorf("%s", errMsg)
+	case <-syncDone:
+		// No need to check syncErr since it's always nil in this implementation
+		// (errors are sent through syncErrChan in the parent function)
+		return nil
+	}
+}
+
 // processBatch scans a batch of addresses in a single operation
 func processBatch(cs *neutrino.RescanChainSource, batch []btcutil.Address, startHeight, endHeight int32,
 	quit chan struct{}, knownTxs map[chainhash.Hash]*btcutil.Tx, isImportedWallet bool) error {
@@ -374,11 +488,10 @@ func processBatch(cs *neutrino.RescanChainSource, batch []btcutil.Address, start
 						// Check if this address is in our batch
 						for _, batchAddr := range batch {
 							if a.EncodeAddress() == batchAddr.EncodeAddress() {
-								txFound = true
 								log.Printf("Transaction %s found for address %s in block %d",
 									tx.Hash(), a.EncodeAddress(), height)
 
-								// Signal that we found something
+								// Signal that we found something (only once)
 								if !txFound {
 									txFound = true
 									select {
@@ -413,11 +526,10 @@ func processBatch(cs *neutrino.RescanChainSource, batch []btcutil.Address, start
 						// Check if this address is in our batch
 						for _, batchAddr := range batch {
 							if a.EncodeAddress() == batchAddr.EncodeAddress() {
-								txFound = true
 								log.Printf("Spending transaction %s found for address %s in block %d",
 									tx.Hash(), a.EncodeAddress(), height)
 
-								// Signal that we found something
+								// Signal that we found something (only once)
 								if !txFound {
 									txFound = true
 									select {
