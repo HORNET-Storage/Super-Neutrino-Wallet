@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/logger"
@@ -38,15 +39,25 @@ func OpenAndloadWallet(reader *bufio.Reader, baseDir string) error {
 	}
 
 	// Prompt the user to select a wallet
-	var choice int
-	for {
-		fmt.Print("Enter the number of the wallet you want to login to: ")
-		_, err := fmt.Fscanf(reader, "%d\n", &choice)
-		if err == nil && choice > 0 && choice <= len(wallets) {
-			break
-		} else {
-			fmt.Println("Invalid choice. Please try again.")
-		}
+	fmt.Print("Enter the number of the wallet you want to login to: ")
+	choiceStr, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("error reading input: %v", err)
+	}
+	choiceStr = strings.TrimSpace(choiceStr)
+
+	// Try to parse the input as an integer
+	choice, err := strconv.Atoi(choiceStr)
+	if err != nil {
+		// Non-integer input (like a password) was entered
+		fmt.Println("Invalid input: expecting a wallet number. Returning to main menu.")
+		return errors.New("invalid wallet selection input")
+	}
+
+	// Check if the choice is within the valid range
+	if choice <= 0 || choice > len(wallets) {
+		fmt.Println("Invalid wallet number. Returning to main menu.")
+		return errors.New("wallet number out of range")
 	}
 
 	// Get the selected wallet name
