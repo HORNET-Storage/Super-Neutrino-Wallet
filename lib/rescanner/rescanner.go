@@ -35,10 +35,10 @@ func PerformRescan(config RescanConfig) error {
 	// Determine the final wallet synchronization timeout
 	var syncTimeoutDuration time.Duration
 
-	// For imported wallets, use a longer timeout regardless of last sync time
+	// For newly imported wallets, use a longer timeout
 	if config.IsImportedWallet {
-		syncTimeoutDuration = 10 * time.Minute // 10 minutes for imported wallets
-		log.Println("Using extended final sync timeout for imported wallet: 10 minutes")
+		syncTimeoutDuration = 10 * time.Minute // 10 minutes for newly imported wallets
+		log.Println("Using extended final sync timeout for newly imported wallet: 10 minutes")
 	} else {
 		// For regular wallets, use adaptive timeout based on last sync time
 		lastSyncTimeStr := viper.GetString("last_sync_time")
@@ -77,8 +77,8 @@ func PerformRescan(config RescanConfig) error {
 	// Use a longer timeout for imported wallets
 	initialSyncTimeout := 5 * time.Second
 	if config.IsImportedWallet {
-		initialSyncTimeout = 1 * time.Minute // 1 minute for imported wallets
-		log.Println("Using extended initial sync timeout for imported wallet: 1 minute")
+		initialSyncTimeout = 1 * time.Minute // 1 minute for newly imported wallets
+		log.Println("Using extended initial sync timeout for newly imported wallet: 1 minute")
 	}
 
 	select {
@@ -276,10 +276,10 @@ FullSyncLoop:
 	return nil
 }
 
-// getExtraTimeout returns an extended timeout duration based on whether the wallet is imported
+// getExtraTimeout returns an extended timeout duration based on whether the wallet is newly imported
 func getExtraTimeout(isImportedWallet bool) time.Duration {
 	if isImportedWallet {
-		return 5 * time.Minute // 5 minutes extra for imported wallets
+		return 5 * time.Minute // 5 minutes extra for newly imported wallets
 	}
 	return 2 * time.Minute // 2 minutes extra for regular wallets
 }
@@ -429,16 +429,16 @@ func processBatch(cs *neutrino.RescanChainSource, batch []btcutil.Address, start
 	scanTimeoutMinutes := 5 * time.Minute // Default 5 minutes
 
 	if isImportedWallet {
-		// For imported wallets, use longer timeouts
+		// For newly imported wallets, use longer timeouts
 		scanTimeoutMinutes = 10 * time.Minute // Double the default timeout
 
 		if blockRange > 10000 {
-			// For larger ranges in imported wallets, scale the timeout with a higher cap
+			// For larger ranges in newly imported wallets, scale the timeout with a higher cap
 			scanTimeoutMinutes = time.Duration(math.Min(float64(blockRange)/800, 30)) * time.Minute
 			// Changed from blockRange/1000 to blockRange/800 and cap from 20 to 30 minutes
 		}
 
-		log.Printf("Using extended timeout for imported wallet batch: %v", scanTimeoutMinutes)
+		log.Printf("Using extended timeout for newly imported wallet batch: %v", scanTimeoutMinutes)
 	} else if blockRange > 10000 {
 		// For regular wallets with large block ranges, use the original scaling
 		scanTimeoutMinutes = time.Duration(math.Min(float64(blockRange)/1000, 20)) * time.Minute
@@ -479,7 +479,7 @@ func processBatch(cs *neutrino.RescanChainSource, batch []btcutil.Address, start
 				return fmt.Errorf("batch rescan error after finding tx: %w", err)
 			}
 			log.Printf("Batch rescan fully completed for %d addresses with transactions", len(batch))
-		case <-time.After(scanTimeoutMinutes + getExtraTimeout(isImportedWallet)): // Give extra time since we found something, more for imported wallets
+		case <-time.After(scanTimeoutMinutes + getExtraTimeout(isImportedWallet)): // Give extra time since we found something, more for newly imported wallets
 			log.Printf("Extended batch rescan timeout - continuing with partial results")
 		case <-quit:
 			return fmt.Errorf("batch rescan was canceled")
