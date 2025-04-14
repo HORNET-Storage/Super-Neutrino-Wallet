@@ -15,6 +15,7 @@ import (
 
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/addresses"
+	utils "github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/utils"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/lib/rescanner"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcwallet/chain"
@@ -33,11 +34,21 @@ func PerformRescanAndProcessTransactions(w *wallet.Wallet, chainClient *chain.Ne
 
 	log.Println("Scanning from block", lastScannedBlockHeight)
 
+	// Check if this is a newly imported wallet by reading the flag from config
+	isImportedWallet := utils.IsNewlyImportedWallet()
+
+	if isImportedWallet {
+		log.Println("Detected newly imported wallet - using extended processing timeouts")
+	} else {
+		log.Println("Using normal processing timeouts for existing wallet")
+	}
+
 	rescanConfig := rescanner.RescanConfig{
-		ChainClient: chainClient,
-		ChainParams: chainParams,
-		StartBlock:  lastScannedBlockHeight,
-		Wallet:      w,
+		ChainClient:      chainClient,
+		ChainParams:      chainParams,
+		StartBlock:       lastScannedBlockHeight,
+		Wallet:           w,
+		IsImportedWallet: isImportedWallet,
 	}
 
 	err = rescanner.PerformRescan(rescanConfig)

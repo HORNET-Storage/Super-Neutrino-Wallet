@@ -182,6 +182,27 @@ func SetWalletLive(live bool) error {
 	return nil
 }
 
+// SetNewlyImportedWallet sets the is_newly_imported flag in the config
+func SetNewlyImportedWallet(isNewlyImported bool) error {
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Printf("Error reading viper config: %s", err.Error())
+	}
+
+	viper.Set("is_newly_imported", isNewlyImported)
+
+	err = viper.WriteConfig()
+	if err != nil {
+		return fmt.Errorf("error writing config file: %w", err)
+	}
+	return nil
+}
+
+// IsNewlyImportedWallet checks if the wallet is newly imported
+func IsNewlyImportedWallet() bool {
+	return viper.GetBool("is_newly_imported")
+}
+
 func Decrypt(ciphertext string, password string) (string, error) {
 	parts := strings.Split(ciphertext, ":")
 	if len(parts) != 3 {
