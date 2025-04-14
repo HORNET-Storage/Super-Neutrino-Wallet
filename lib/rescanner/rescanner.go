@@ -263,6 +263,15 @@ FullSyncLoop:
 		log.Printf("Error updating last sync time: %v", err)
 	}
 
+	// If this was a newly imported wallet, reset the flag after successful sync
+	if config.IsImportedWallet {
+		log.Println("Resetting newly imported wallet flag after successful sync")
+		err = utils.SetNewlyImportedWallet(false)
+		if err != nil {
+			log.Printf("Error resetting newly imported wallet flag: %v", err)
+		}
+	}
+
 	// Get the updated balance
 	balance, err := config.Wallet.CalculateBalance(1)
 	if err != nil {

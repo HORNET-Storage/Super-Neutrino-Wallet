@@ -15,6 +15,7 @@ import (
 
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/addresses"
+	utils "github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/utils"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/lib/rescanner"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcwallet/chain"
@@ -33,29 +34,13 @@ func PerformRescanAndProcessTransactions(w *wallet.Wallet, chainClient *chain.Ne
 
 	log.Println("Scanning from block", lastScannedBlockHeight)
 
-	// Determine if this is a newly imported wallet by checking:
-	// 1. If the block height difference is significant (>144 blocks)
-	// 2. If there's no last sync time recorded (indicating first sync)
-	isImportedWallet := false
+	// Check if this is a newly imported wallet by reading the flag from config
+	isImportedWallet := utils.IsNewlyImportedWallet()
 
-	// Get the current best block height
-	_, bestHeight, err := chainClient.GetBestBlock()
-	if err == nil {
-		// Check if the starting block is more than 144 blocks in the past (approximately 1 day)
-		blockHeightDifference := bestHeight - lastScannedBlockHeight
-		hasSignificantBlockDifference := blockHeightDifference > 144
-
-		// Check if this is the first sync (no last sync time recorded)
-		lastSyncTimeStr := viper.GetString("last_sync_time")
-		isFirstSync := lastSyncTimeStr == ""
-
-		// Only consider it a newly imported wallet if BOTH conditions are true
-		if hasSignificantBlockDifference && isFirstSync {
-			isImportedWallet = true
-			log.Println("Detected newly imported wallet (significant block difference and first sync) - using extended processing timeouts")
-		} else if hasSignificantBlockDifference {
-			log.Println("Wallet has significant block difference but has been synced before - using normal timeouts")
-		}
+	if isImportedWallet {
+		log.Println("Detected newly imported wallet - using extended processing timeouts")
+	} else {
+		log.Println("Using normal processing timeouts for existing wallet")
 	}
 
 	rescanConfig := rescanner.RescanConfig{
