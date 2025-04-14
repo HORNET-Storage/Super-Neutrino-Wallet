@@ -33,11 +33,28 @@ func PerformRescanAndProcessTransactions(w *wallet.Wallet, chainClient *chain.Ne
 
 	log.Println("Scanning from block", lastScannedBlockHeight)
 
+	// Determine if this is an imported wallet by checking the last scanned block height
+	// If the last scanned block height is more than a day old (approximately 144 blocks),
+	// it's likely an imported wallet with history
+	isImportedWallet := false
+
+	// Get the current best block height
+	_, bestHeight, err := chainClient.GetBestBlock()
+	if err == nil {
+		// If the starting block is more than 144 blocks in the past (approximately 1 day),
+		// consider it an imported wallet
+		if bestHeight-lastScannedBlockHeight > 144 {
+			isImportedWallet = true
+			log.Println("Wallet starting from a block height more than a day old - using extended processing timeouts for imported wallet")
+		}
+	}
+
 	rescanConfig := rescanner.RescanConfig{
-		ChainClient: chainClient,
-		ChainParams: chainParams,
-		StartBlock:  lastScannedBlockHeight,
-		Wallet:      w,
+		ChainClient:      chainClient,
+		ChainParams:      chainParams,
+		StartBlock:       lastScannedBlockHeight,
+		Wallet:           w,
+		IsImportedWallet: isImportedWallet,
 	}
 
 	err = rescanner.PerformRescan(rescanConfig)

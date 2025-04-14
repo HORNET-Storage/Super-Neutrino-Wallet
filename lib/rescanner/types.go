@@ -7,8 +7,9 @@ import (
 )
 
 type RescanConfig struct {
-	ChainClient *chain.NeutrinoClient
-	ChainParams *chaincfg.Params
-	StartBlock  int32
-	Wallet      *wallet.Wallet
+	ChainClient      *chain.NeutrinoClient
+	ChainParams      *chaincfg.Params
+	StartBlock       int32
+	Wallet           *wallet.Wallet
+	IsImportedWallet bool // Indicates if this is an imported wallet with potential history
 }
