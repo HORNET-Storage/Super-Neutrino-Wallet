@@ -78,9 +78,9 @@ func CreateNewWallet(reader *bufio.Reader) error {
 		}
 	}
 
-	// Set the newly imported wallet flag to true
-	viper.Set("is_newly_imported", true)
-	fmt.Println("Setting wallet as newly imported for extended initial sync timeouts")
+	// Set the newly imported wallet flag to false for new wallets
+	viper.Set("is_newly_imported", false)
+	fmt.Println("Setting wallet as new (not imported) for standard sync timeouts")
 
 	err = viper.WriteConfig()
 	if err != nil {
@@ -143,9 +143,9 @@ func CreateWalletAPI(walletName, password, pubKey, apiKey string) (string, error
 		viper.Set("user_pubkey", pubKey)
 	}
 
-	// Set the newly imported wallet flag to true
-	viper.Set("is_newly_imported", true)
-	log.Printf("Setting is_newly_imported flag to true for wallet: %s", walletName)
+	// Set the newly imported wallet flag to false for new wallets
+	viper.Set("is_newly_imported", false)
+	log.Printf("Setting is_newly_imported flag to false for new wallet: %s", walletName)
 
 	err = viper.WriteConfig()
 	if err != nil {
