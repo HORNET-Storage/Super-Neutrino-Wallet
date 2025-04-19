@@ -27,14 +27,9 @@ func (s *WalletServer) SyncBlockchain() {
 		log.Printf("Current block height: %d", bestBlock.Height)
 		logger.Info("Current block height: ", bestBlock.Height)
 
-		currentHash, err := s.API.ChainService.GetBlockHash(int64(bestBlock.Height))
-		if err != nil {
-			log.Printf("Error getting current block hash: %v", err)
-			logger.Error("Error getting current block hash: ", err)
-		} else {
-			log.Printf("Current block hash: %s", currentHash.String())
-			logger.Info("Current block hash: ", currentHash.String())
-		}
+		// Log the current block number instead of hash
+		log.Printf("Current block number: %d", bestBlock.Height)
+		logger.Info("Current block number: ", bestBlock.Height)
 
 		peers := s.API.ChainService.Peers()
 		log.Printf("Connected peers: %d", len(peers))
