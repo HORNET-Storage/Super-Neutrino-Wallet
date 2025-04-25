@@ -24,12 +24,13 @@ func (s *WalletServer) SyncBlockchain() {
 			log.Printf("Error getting best block: %v", err)
 			continue
 		}
-		log.Printf("Current block height: %d", bestBlock.Height)
-		logger.Info("Current block height: ", bestBlock.Height)
+		formattedHeight := utils.FormatBlockHeight(bestBlock.Height)
+		log.Printf("Current block height: %s", formattedHeight)
+		logger.Info("Current block height: ", formattedHeight)
 
 		// Log the current block number instead of hash
-		log.Printf("Current block number: %d", bestBlock.Height)
-		logger.Info("Current block number: ", bestBlock.Height)
+		log.Printf("Current block number: %s", formattedHeight)
+		logger.Info("Current block number: ", formattedHeight)
 
 		peers := s.API.ChainService.Peers()
 		log.Printf("Connected peers: %d", len(peers))
