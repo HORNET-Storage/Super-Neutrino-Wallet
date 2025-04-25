@@ -228,8 +228,19 @@ func PerformRescan(config RescanConfig) error {
 	progressTicker := time.NewTicker(10 * time.Second)
 	defer progressTicker.Stop()
 
-	// Progress reporting goroutine
+	// Progress reporting goroutine with rotating status messages for frontend
 	go func() {
+		// Define rotating status messages to show progress
+		statusMessages := []string{
+			"Scanning blockchain for wallet transactions...",
+			"Analyzing address history...",
+			"Searching for transactions...",
+			"Processing blockchain data...",
+			"Retrieving transaction history...",
+			"Building transaction index...",
+		}
+		messageIndex := 0
+
 		for range progressTicker.C {
 			processed := atomic.LoadInt32(&processedAddresses)
 			if processed >= int32(addrCount) {
@@ -241,8 +252,17 @@ func PerformRescan(config RescanConfig) error {
 			estimatedTotal := float64(elapsed) / (float64(processed) / float64(addrCount))
 			estimatedRemaining := time.Duration(estimatedTotal) - elapsed
 
+			// Log detailed progress to application log
 			log.Printf("Progress: %.1f%% (%d/%d addresses) - Est. remaining: %v",
 				percent, processed, addrCount, estimatedRemaining.Round(time.Second))
+
+			// Log rotating status message with percentage for frontend
+			statusMsg := fmt.Sprintf("%s (%.1f%% complete)",
+				statusMessages[messageIndex], percent)
+			logger.Info(statusMsg)
+
+			// Rotate to next message
+			messageIndex = (messageIndex + 1) % len(statusMessages)
 		}
 	}()
 
@@ -296,18 +316,22 @@ func PerformRescan(config RescanConfig) error {
 		log.Printf("Batch scan error: %v", err)
 	}
 
-	if errorCount > 0 {
-		log.Printf("Completed address scanning with %d errors", errorCount)
-		logger.Info("Address scanning completed with " + fmt.Sprintf("%d", errorCount) + " errors")
-	} else {
-		log.Println("All address batches scanned successfully")
-		logger.Info("Address scanning completed successfully")
-	}
-
 	// Log completion stats
 	totalTime := time.Since(startTime)
-	log.Printf("Address scanning completed in %v (%.1f addresses/sec)",
-		totalTime, float64(addrCount)/totalTime.Seconds())
+	speed := float64(addrCount) / totalTime.Seconds()
+
+	if errorCount > 0 {
+		log.Printf("Completed address scanning with %d errors in %v (%.1f addresses/sec)",
+			errorCount, totalTime, speed)
+		logger.Info(fmt.Sprintf("Address scanning completed with %d errors in %v (%.1f addresses/sec)",
+			errorCount, totalTime.Round(time.Second), speed))
+	} else {
+		log.Printf("All address batches scanned successfully in %v (%.1f addresses/sec)",
+			totalTime, speed)
+		logger.Info(fmt.Sprintf("Address scanning completed successfully in %v (%.1f addresses/sec)",
+			totalTime.Round(time.Second), speed))
+	}
+
 
 	// Wait for full synchronization to complete or timeout
 	log.Printf("Waiting up to %v for final wallet synchronization...", syncTimeoutDuration)
