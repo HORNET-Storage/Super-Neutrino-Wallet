@@ -418,3 +418,22 @@ func Encrypt(plaintext string, password string) string {
 		base64.StdEncoding.EncodeToString(iv) + ":" +
 		base64.StdEncoding.EncodeToString(ciphertext)
 }
+
+// FormatBlockHeight formats a block height with commas for better readability
+// For example: 700000 becomes "700,000"
+func FormatBlockHeight(height int32) string {
+	// Convert the height to a string
+	heightStr := strconv.FormatInt(int64(height), 10)
+	
+	// Format with commas
+	parts := []string{}
+	for i := len(heightStr); i > 0; i -= 3 {
+		start := i - 3
+		if start < 0 {
+			start = 0
+		}
+		parts = append([]string{heightStr[start:i]}, parts...)
+	}
+	
+	return strings.Join(parts, ",")
+}

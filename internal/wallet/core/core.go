@@ -111,13 +111,14 @@ func InitializeWallet(seedPhrase string, pubPass []byte, privPass []byte, baseDi
 
 		lastScannedHeight := utils.EstimateBlockHeight(birthday)
 
-		log.Println("Estimate block height from birthday: ", lastScannedHeight)
+		log.Println("Estimate block height from birthday: ", utils.FormatBlockHeight(lastScannedHeight))
 
 		err = walletstatedb.UpdateLastScannedBlockHeight(lastScannedHeight)
 		if err != nil {
 			log.Printf("Error updating last scanned block height: %v", err)
 		} else {
-			log.Printf("Updated last scanned block height to %d", lastScannedHeight)
+			formattedLastScanned := utils.FormatBlockHeight(lastScannedHeight)
+				log.Printf("Updated last scanned block height to %s", formattedLastScanned)
 		}
 		w, err = loader.CreateNewWalletExtendedKey(pubPass, privPass, rootKey, birthday)
 		createDuration := time.Since(createStart)
@@ -239,7 +240,8 @@ func InitializeWallet(seedPhrase string, pubPass []byte, privPass []byte, baseDi
 		if err != nil {
 			log.Printf("Error updating last scanned block height: %v", err)
 		} else {
-			log.Printf("Updated last scanned block height to %d", lastScannedHeight)
+			formattedLastScanned := utils.FormatBlockHeight(lastScannedHeight)
+				log.Printf("Updated last scanned block height to %s", formattedLastScanned)
 		}
 	}
 
@@ -264,15 +266,16 @@ func InitialChainServiceSync(chainService *neutrino.ChainService) {
 			log.Printf("Error getting best block: %v", err)
 			continue
 		}
-		log.Printf("Current block height: %d", bestBlock.Height)
-		logger.Info("Current block height: ", bestBlock.Height)
+		formattedHeight := utils.FormatBlockHeight(bestBlock.Height)
+			log.Printf("Current block height: %s", formattedHeight)
+		logger.Info("Current block height: ", formattedHeight)
 
 		currentHash, err := chainService.GetBlockHash(int64(bestBlock.Height))
 		if err != nil {
 			log.Printf("Error getting current block hash: %v", err)
 		} else {
 			log.Printf("Current block hash: %s", currentHash.String())
-			logger.Info("Current block height: ", bestBlock.Height)
+			logger.Info("Current block height: ", formattedHeight)
 		}
 
 		peers := chainService.Peers()
