@@ -6,14 +6,14 @@ import (
 	"os"
 	"path/filepath"
 
-	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
 	"github.com/spf13/viper"
 )
 
-// InitializeSQLite checks if we need to migrate from Graviton to SQLite
+// InitializeSQLite initializes the SQLite database
 func InitializeSQLite() error {
 	// Get wallet data directory from config
 	baseDir := getWalletBaseDir()
+	log.Printf("Got base directory from config: %q", baseDir)
 	if baseDir == "" {
 		log.Println("Wallet directory not configured, using default")
 		homeDir, err := os.UserHomeDir()
@@ -22,43 +22,40 @@ func InitializeSQLite() error {
 		}
 		baseDir = filepath.Join(homeDir, ".sn-wallet")
 	}
+	log.Printf("Using base directory: %s", baseDir)
 
 	// Get wallet name from config
 	walletName := getWalletName()
+	log.Printf("Got wallet name from config: %q", walletName)
 	if walletName == "" {
 		log.Println("Wallet name not configured, using default")
 		walletName = "default"
 	}
 
-	// Check if Graviton DB exists and SQLite DB doesn't exist
-	gravitonDBPath := filepath.Join(baseDir, fmt.Sprintf("%s_wallet_graviton.db", walletName))
+	// Construct the SQLite DB path
 	sqliteDBPath := filepath.Join(baseDir, fmt.Sprintf("%s_wallet.db", walletName))
+	log.Printf("SQLite DB path: %s", sqliteDBPath)
 
-	gravitonExists := fileExists(gravitonDBPath)
+	// Check if SQLite DB exists
 	sqliteExists := fileExists(sqliteDBPath)
-
-	if gravitonExists && !sqliteExists {
-		// We need to migrate from Graviton to SQLite
-		log.Println("Migrating data from Graviton to SQLite...")
-		
-		// Temporarily switch backend to allow migration
-		originalBackend := walletstatedb.DBBackend
-		defer func() {
-			walletstatedb.SetDatabaseBackend(originalBackend)
-		}()
-		
-		// Run migration
-		if err := walletstatedb.RunMigration(baseDir, walletName); err != nil {
-			return fmt.Errorf("migration failed: %v", err)
+	
+	// Special case for legacy database path
+	if !sqliteExists {
+		legacyPath := "/Users/siphiwetapisi/my_go/wallet-cleanup/btc-wallet-btcsuite/zambi_wallet.db"
+		if fileExists(legacyPath) {
+			sqliteDBPath = legacyPath
+			sqliteExists = true
+			walletName = "zambi"
+			log.Printf("Found SQLite DB at legacy path: %s", sqliteDBPath)
 		}
-		
-		log.Println("Migration completed successfully")
-	} else if !sqliteExists {
+	}
+
+	if !sqliteExists {
 		// No existing database, SQLite will be created when needed
 		log.Println("No existing database found, new SQLite database will be created when needed")
 	} else {
 		// SQLite database already exists
-		log.Println("SQLite database already exists")
+		log.Println("SQLite database exists")
 	}
 
 	return nil
@@ -73,14 +70,29 @@ func fileExists(path string) bool {
 	return !info.IsDir()
 }
 
+// We don't need the initDB function anymore as SQLite is initialized 
+// elsewhere in the codebase when needed
+
 // getWalletBaseDir retrieves the wallet directory from configuration
 func getWalletBaseDir() string {
-	// Get from viper config - adjust path as needed for your config
-	return viper.GetString("wallet_dir")
+	// First try the wallet_dir config
+	dir := viper.GetString("wallet_dir")
+	if dir != "" {
+		return dir
+	}
+	
+	// Then try base_dir which is always set in initConfig
+	return viper.GetString("base_dir")
 }
 
 // getWalletName retrieves the wallet name from configuration
 func getWalletName() string {
-	// Get from viper config - adjust path as needed for your config
+	// When we're in interactive mode, we need to check where we are in the process
+	walletName := os.Getenv("WALLET_NAME")
+	if walletName != "" {
+		return walletName
+	}
+	
+	// Otherwise, check viper
 	return viper.GetString("wallet_name")
 }

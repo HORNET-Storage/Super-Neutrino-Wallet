@@ -623,10 +623,4 @@ func TransactionExistsInSQLite(txID string, vout uint32) (bool, error) {
 	return count > 0, nil
 }
 
-// MigrateFromGraviton migrates data from Graviton to SQLite
-// This would be implemented to transfer data from the old DB to the new one
-func MigrateFromGraviton(gravitonDBPath string) error {
-	// This function would be implemented to migrate data from Graviton to SQLite
-	// For now, return a placeholder message
-	return fmt.Errorf("migration not implemented yet")
-}
+// No Graviton migration code needed anymore; SQLite is the only database backend

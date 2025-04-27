@@ -813,18 +813,8 @@ func ReplaceTransactionWithHigherFee(w *wallet.Wallet, service *neutrino.ChainSe
 }
 
 func RetrieveTransaction(txHash string) (string, error) {
-	ss, err := walletstatedb.Store.LoadSnapshot(0)
-	if err != nil {
-		return "", fmt.Errorf("failed to load snapshot: %v", err)
-	}
-
-	txTree, err := ss.GetTree("transactions")
-	if err != nil {
-		return "", fmt.Errorf("failed to get transactions tree: %v", err)
-	}
-
-	// Get the raw transaction from the database
-	rawTx, err := walletstatedb.GetRawTransaction(txTree, txHash)
+	// Get the raw transaction from the SQLite database
+	rawTx, err := walletstatedb.GetRawTransactionFromSQLite(txHash)
 	if err != nil {
 		return "", err
 	}

@@ -9,13 +9,13 @@ import (
 // SQLiteAddress represents an address in the wallet
 type SQLiteAddress struct {
 	gorm.Model
-	Index       uint       `gorm:"uniqueIndex"`
+	Index       uint       `gorm:"index;uniqueIndex:idx_addr_type_index"`
 	Address     string     `gorm:"uniqueIndex"`
 	Status      string     `gorm:"index"` // available, allocated, used
 	AllocatedAt *time.Time
 	UsedAt      *time.Time
 	BlockHeight *uint32
-	AddrType    string     `gorm:"index"` // receive or change
+	AddrType    string     `gorm:"index;uniqueIndex:idx_addr_type_index"` // receive or change
 }
 
 // SQLiteTransaction represents a transaction in the wallet

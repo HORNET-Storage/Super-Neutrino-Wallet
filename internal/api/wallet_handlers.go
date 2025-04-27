@@ -93,29 +93,9 @@ func (s *API) HandleChallengeRequest(w http.ResponseWriter, _ *http.Request) {
 		CreatedAt: time.Now(),
 	}
 
-	if walletstatedb.DBBackend == walletstatedb.DBTypeSQLite {
-		if err := walletstatedb.SaveChallengeToSQLite(newChallenge); err != nil {
-			http.Error(w, "Failed to save challenge to SQLite", http.StatusInternalServerError)
-			return
-		}
-	} else {
-		// For backward compatibility with Graviton
-		ss, err := walletstatedb.Store.LoadSnapshot(0)
-		if err != nil {
-			http.Error(w, "Failed to load snapshot", http.StatusInternalServerError)
-			return
-		}
-
-		challengeTree, err := ss.GetTree(walletstatedb.ChallengeTreeName)
-		if err != nil {
-			http.Error(w, "Failed to get challenge tree", http.StatusInternalServerError)
-			return
-		}
-
-		if err := walletstatedb.SaveChallenge(challengeTree, newChallenge); err != nil {
-			http.Error(w, "Failed to save challenge", http.StatusInternalServerError)
-			return
-		}
+	if err := walletstatedb.SaveChallenge(newChallenge); err != nil {
+		http.Error(w, "Failed to save challenge", http.StatusInternalServerError)
+		return
 	}
 
 	// Return the challenge as part of a Nostr event (for frontend)
@@ -168,27 +148,7 @@ func (s *API) VerifyChallenge(w http.ResponseWriter, r *http.Request) {
 	challengeHash := sha256.Sum256([]byte(verifyPayload.Challenge))
 	hashString := hex.EncodeToString(challengeHash[:])
 	
-	var challenge *walletstatedb.Challenge
-	var err error
-	
-	if walletstatedb.DBBackend == walletstatedb.DBTypeSQLite {
-		challenge, err = walletstatedb.GetChallengeFromSQLite(hashString)
-	} else {
-		// For backward compatibility with Graviton
-		ss, err := walletstatedb.Store.LoadSnapshot(0)
-		if err != nil {
-			http.Error(w, "Failed to load snapshot", http.StatusInternalServerError)
-			return
-		}
-
-		challengeTree, err := ss.GetTree(walletstatedb.ChallengeTreeName)
-		if err != nil {
-			http.Error(w, "Failed to get challenge tree", http.StatusInternalServerError)
-			return
-		}
-		
-		challenge, err = walletstatedb.GetChallenge(challengeTree, hashString)
-	}
+	challenge, err := walletstatedb.GetChallenge(hashString)
 	
 	if err != nil || challenge.Status != "unused" {
 		http.Error(w, "Invalid or expired challenge", http.StatusUnauthorized)
@@ -197,18 +157,7 @@ func (s *API) VerifyChallenge(w http.ResponseWriter, r *http.Request) {
 
 	// Check if the challenge has expired (older than 2 minutes)
 	if time.Since(challenge.CreatedAt) > 2*time.Minute {
-		if walletstatedb.DBBackend == walletstatedb.DBTypeSQLite {
-			walletstatedb.MarkChallengeAsUsedInSQLite(challenge.Hash)
-		} else {
-			// For backward compatibility with Graviton
-			ss, err := walletstatedb.Store.LoadSnapshot(0)
-			if err == nil {
-				challengeTree, err := ss.GetTree(walletstatedb.ChallengeTreeName)
-				if err == nil {
-					walletstatedb.MarkChallengeAsUsed(challengeTree, challenge.Hash)
-				}
-			}
-		}
+		walletstatedb.MarkChallengeAsUsed(challenge.Hash)
 		http.Error(w, "Challenge expired", http.StatusUnauthorized)
 		return
 	}
@@ -225,27 +174,7 @@ func (s *API) VerifyChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Mark the challenge as used
-	var markErr error
-	if walletstatedb.DBBackend == walletstatedb.DBTypeSQLite {
-		markErr = walletstatedb.MarkChallengeAsUsedInSQLite(challenge.Hash)
-	} else {
-		// For backward compatibility with Graviton
-		ss, err := walletstatedb.Store.LoadSnapshot(0)
-		if err != nil {
-			http.Error(w, "Failed to load snapshot", http.StatusInternalServerError)
-			return
-		}
-
-		challengeTree, err := ss.GetTree(walletstatedb.ChallengeTreeName)
-		if err != nil {
-			http.Error(w, "Failed to get challenge tree", http.StatusInternalServerError)
-			return
-		}
-		
-		markErr = walletstatedb.MarkChallengeAsUsed(challengeTree, challenge.Hash)
-	}
-	
-	if markErr != nil {
+	if err := walletstatedb.MarkChallengeAsUsed(challenge.Hash); err != nil {
 		http.Error(w, "Failed to mark challenge as used", http.StatusInternalServerError)
 		return
 	}

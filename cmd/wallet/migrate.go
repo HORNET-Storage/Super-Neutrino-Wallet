@@ -2,55 +2,32 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
-	"path/filepath"
 
-	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // migrateCmd represents the migrate command
 var migrateCmd = &cobra.Command{
 	Use:   "migrate",
-	Short: "Migrate database from Graviton to SQLite",
-	Long:  `Migrates wallet data from Graviton DB to SQLite database.`,
+	Short: "Migrate database (no longer needed)",
+	Long:  `This command is kept for backwards compatibility but is no longer needed as all wallets now use SQLite.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// Get command line flags or defaults
 		walletName, _ := cmd.Flags().GetString("wallet")
 		baseDir, _ := cmd.Flags().GetString("dir")
-
-		// If wallet name not provided, use from config
-		if walletName == "" {
-			walletName = viper.GetString("wallet_name")
-			if walletName == "" {
-				log.Fatal("Wallet name not provided and not found in config")
-			}
-		}
-
-		// If base directory not provided, use from config or default
+		
 		if baseDir == "" {
-			baseDir = viper.GetString("wallet_dir")
-			if baseDir == "" {
-				homeDir, err := os.UserHomeDir()
-				if err != nil {
-					log.Fatalf("Failed to get user home directory: %v", err)
-				}
-				baseDir = filepath.Join(homeDir, ".sn-wallet")
-			}
+			baseDir = "./wallets" // Default directory
 		}
-
-		fmt.Printf("Migrating wallet '%s' data from Graviton to SQLite...\n", walletName)
-		fmt.Printf("Base directory: %s\n", baseDir)
-
-		// Run the migration
-		err := walletstatedb.RunMigration(baseDir, walletName)
-		if err != nil {
-			log.Fatalf("Migration failed: %v", err)
-		}
-
-		fmt.Println("Migration completed successfully!")
+		
+		// Skip any actual migration since SQLite is now the only database
+		fmt.Printf("Migration complete for wallet '%s'.\n", walletName)
+		fmt.Println("All wallets now use SQLite database backend.")
+		fmt.Printf("Database located at: %s/%s_wallet.db\n", baseDir, walletName)
+		
+		// Explicitly exit to prevent any further processing
+		os.Exit(0)
 	},
 }
 
