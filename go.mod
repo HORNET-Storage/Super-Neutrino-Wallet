@@ -1,6 +1,8 @@
 module github.com/Maphikza/btc-wallet-btcsuite.git
 
-go 1.22.3
+go 1.23.0
+
+toolchain go1.23.4
 
 require (
 	github.com/atotto/clipboard v0.1.4
@@ -11,6 +13,8 @@ require (
 	github.com/btcsuite/btcwallet/wtxmgr v1.5.0
 	github.com/lightninglabs/neutrino v0.15.0
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
+	gorm.io/driver/sqlite v1.5.7
+	gorm.io/gorm v1.26.0
 )
 
 require (
@@ -32,6 +36,8 @@ require (
 	github.com/gobwas/ws v1.2.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/kkdai/bstream v0.0.0-20181106074824-b3251f7901ec // indirect
 	github.com/lightninglabs/gozmq v0.0.0-20191113021534-d20a764486bf // indirect
@@ -42,6 +48,7 @@ require (
 	github.com/lightningnetwork/lnd/tlv v1.0.2 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
+	github.com/mattn/go-sqlite3 v1.14.28 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
@@ -61,9 +68,9 @@ require (
 	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
-	golang.org/x/sync v0.6.0 // indirect
+	golang.org/x/sync v0.13.0 // indirect
 	golang.org/x/term v0.18.0 // indirect
-	golang.org/x/text v0.14.0 // indirect
+	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

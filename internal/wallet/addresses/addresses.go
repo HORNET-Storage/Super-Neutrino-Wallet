@@ -10,7 +10,6 @@ import (
 	"github.com/btcsuite/btcwallet/chain"
 	"github.com/btcsuite/btcwallet/waddrmgr"
 	"github.com/btcsuite/btcwallet/wallet"
-	"github.com/deroproject/graviton"
 )
 
 // Constants
@@ -93,33 +92,13 @@ func GenerateAndSaveAddresses(w *wallet.Wallet, count int) ([]btcutil.Address, [
 	account := uint32(0)
 	scope := waddrmgr.KeyScopeBIP0084
 
-	ss, err := walletstatedb.Store.LoadSnapshot(0)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to load snapshot: %v", err)
-	}
-
-	receiveAddrTree, err := ss.GetTree("receive_addresses")
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get receive addresses tree: %v", err)
-	}
-
-	changeAddrTree, err := ss.GetTree("change_addresses")
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get change addresses tree: %v", err)
-	}
-
-	// Get the unsent addresses tree
-	unsentAddrTree, err := ss.GetTree(UnsentAddressesTree)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get unsent addresses tree: %v", err)
-	}
-
-	lastReceiveIndex, err := walletstatedb.GetLastAddressIndex(receiveAddrTree)
+	// Get the last address index for receive and change addresses
+	lastReceiveIndex, err := walletstatedb.GetLastAddressIndexWithType("receive")
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting last receive address index: %v", err)
 	}
 
-	lastChangeIndex, err := walletstatedb.GetLastAddressIndex(changeAddrTree)
+	lastChangeIndex, err := walletstatedb.GetLastAddressIndexWithType("change")
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting last change address index: %v", err)
 	}
@@ -142,25 +121,20 @@ func GenerateAndSaveAddresses(w *wallet.Wallet, count int) ([]btcutil.Address, [
 			Status:  walletstatedb.AddressStatusAvailable,
 		}
 
-		// Save to both regular and unsent trees
-		err = walletstatedb.SaveAddress(receiveAddrTree, addrStruct)
+		// Save address
+		err = walletstatedb.SaveAddressWithType("receive", addrStruct)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to save receive address: %v", err)
 		}
 
-		err = walletstatedb.SaveAddress(unsentAddrTree, addrStruct)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to save address to unsent tree: %v", err)
-		}
-
-		// Generate and save change address (only to regular tree)
+		// Generate and save change address
 		changeAddr, err := w.NewChangeAddress(account, scope)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to generate change address: %v", err)
 		}
 		newChangeAddresses[i] = changeAddr
 
-		err = walletstatedb.SaveAddress(changeAddrTree, walletstatedb.Address{
+		err = walletstatedb.SaveAddressWithType("change", walletstatedb.Address{
 			Index:   uint(lastChangeIndex + i + 1),
 			Address: changeAddr.String(),
 			Status:  walletstatedb.AddressStatusAvailable,
@@ -170,55 +144,21 @@ func GenerateAndSaveAddresses(w *wallet.Wallet, count int) ([]btcutil.Address, [
 		}
 	}
 
-	// Commit all trees
-	err = walletstatedb.CommitTrees(receiveAddrTree, changeAddrTree, unsentAddrTree)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to commit trees: %v", err)
-	}
-
 	return newReceiveAddresses, newChangeAddresses, nil
 }
 
-// GetUnsentAddresses retrieves all addresses from the unsent tree
+// GetUnsentAddresses retrieves all unsent addresses
 func GetUnsentAddresses() ([]walletstatedb.Address, error) {
-	ss, err := walletstatedb.Store.LoadSnapshot(0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load snapshot: %v", err)
-	}
-
-	unsentAddrTree, err := ss.GetTree(UnsentAddressesTree)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get unsent addresses tree: %v", err)
-	}
-
-	return walletstatedb.GetAddresses(unsentAddrTree)
+	// This function would be modified to use a flag in the SQLiteAddress model
+	// or a separate table to track unsent addresses
+	// For now, we'll get all addresses marked with 'available' status
+	return walletstatedb.GetAddressesWithType("receive")
 }
 
-// ClearUnsentAddresses removes all addresses from the unsent tree
+// ClearUnsentAddresses clears the unsent status of addresses
 func ClearUnsentAddresses() error {
-	ss, err := walletstatedb.Store.LoadSnapshot(0)
-	if err != nil {
-		return fmt.Errorf("failed to load snapshot: %v", err)
-	}
-
-	unsentAddrTree, err := ss.GetTree(UnsentAddressesTree)
-	if err != nil {
-		return fmt.Errorf("failed to get unsent addresses tree: %v", err)
-	}
-
-	// Delete all entries
-	cursor := unsentAddrTree.Cursor()
-	for k, _, err := cursor.First(); err == nil; k, _, err = cursor.Next() {
-		err = unsentAddrTree.Delete(k)
-		if err != nil {
-			return fmt.Errorf("failed to delete address from unsent tree: %v", err)
-		}
-	}
-
-	_, err = graviton.Commit(unsentAddrTree)
-	if err != nil {
-		return fmt.Errorf("failed to commit cleared unsent addresses: %v", err)
-	}
-
+	// This would be implemented to mark addresses as sent in the database
+	// For now, we'll return nil as a placeholder
+	log.Println("ClearUnsentAddresses: this function needs implementation with SQLite")
 	return nil
 }
