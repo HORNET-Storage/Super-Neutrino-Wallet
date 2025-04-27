@@ -26,12 +26,12 @@ import (
 
 func InitializeWallet(seedPhrase string, pubPass []byte, privPass []byte, baseDir string, walletName string, birthdate time.Time) (*wallet.Wallet, *chaincfg.Params, *neutrino.ChainService, *chain.NeutrinoClient, walletdb.DB, error) {
 	// Initialize the wallet and necessary components
-	// Initialize the SQLite database
-	walletSQLiteDbName := fmt.Sprintf("%s_wallet.db", walletName)
-	dbPath := filepath.Join(baseDir, walletSQLiteDbName)
-	err := walletstatedb.InitSQLiteDB(dbPath)
+	// Initialize the database (SQLite or Graviton based on the selected backend)
+	walletDbName := fmt.Sprintf("%s_wallet.db", walletName)
+	dbPath := filepath.Join(baseDir, walletDbName)
+	err := walletstatedb.InitializeDatabase(dbPath)
 	if err != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("error initializing SQLite database: %v", err)
+		return nil, nil, nil, nil, nil, fmt.Errorf("error initializing database: %v", err)
 	}
 
 	log.Println("Generating BIP39 seed from seed phrase")
