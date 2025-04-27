@@ -140,6 +140,16 @@ func GetBlockHeight(tree *graviton.Tree) (int32, error) {
 }
 
 func RetrieveAddresses() ([]btcutil.Address, []btcutil.Address, error) {
+	// Check which backend we're using
+	if DBBackend == DBTypeSQLite {
+		return RetrieveAddressesFromSQLite()
+	}
+
+	// Graviton implementation
+	if Store == nil {
+		return nil, nil, fmt.Errorf("database not initialized")
+	}
+	
 	ss, err := Store.LoadSnapshot(0)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load snapshot: %v", err)
@@ -189,6 +199,16 @@ func RetrieveAddresses() ([]btcutil.Address, []btcutil.Address, error) {
 }
 
 func PrintAndCopyReceiveAddresses() (Address, error) {
+	// Check which backend we're using
+	if DBBackend == DBTypeSQLite {
+		return PrintAndCopyReceiveAddressesFromSQLite()
+	}
+
+	// Graviton implementation
+	if Store == nil {
+		return Address{}, fmt.Errorf("database not initialized")
+	}
+
 	ss, err := Store.LoadSnapshot(0)
 	if err != nil {
 		return Address{}, fmt.Errorf("failed to load snapshot: %v", err)
@@ -237,6 +257,16 @@ func CommitTrees(trees ...*graviton.Tree) error {
 }
 
 func SetLastScannedBlockHeight(height int32) error {
+	// Check which backend we're using
+	if DBBackend == DBTypeSQLite {
+		return SetLastScannedBlockHeightInSQLite(height)
+	}
+
+	// Graviton implementation
+	if Store == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	
 	ss, err := Store.LoadSnapshot(0)
 	if err != nil {
 		return fmt.Errorf("failed to load snapshot: %v", err)
@@ -262,6 +292,16 @@ func SetLastScannedBlockHeight(height int32) error {
 }
 
 func GetLastScannedBlockHeight() (int32, error) {
+	// Check which backend we're using
+	if DBBackend == DBTypeSQLite {
+		return GetLastScannedBlockHeightFromSQLite()
+	}
+
+	// Graviton implementation
+	if Store == nil {
+		return 0, fmt.Errorf("database not initialized")
+	}
+	
 	ss, err := Store.LoadSnapshot(0)
 	if err != nil {
 		return 0, fmt.Errorf("failed to load snapshot: %v", err)
@@ -294,6 +334,16 @@ func UpdateLastScannedBlockHeight(height int32) error {
 }
 
 func GenerateNewAddresses(w *wallet.Wallet, count int) error {
+	// Check which backend we're using
+	if DBBackend == DBTypeSQLite {
+		return GenerateNewAddressesInSQLite(w, count)
+	}
+
+	// Graviton implementation
+	if Store == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	
 	ss, err := Store.LoadSnapshot(0)
 	if err != nil {
 		return fmt.Errorf("failed to load snapshot: %v", err)
@@ -336,6 +386,16 @@ func GenerateNewAddresses(w *wallet.Wallet, count int) error {
 }
 
 func EnsureMinimumAvailableAddresses(w *wallet.Wallet) error {
+	// Check which backend we're using
+	if DBBackend == DBTypeSQLite {
+		return EnsureMinimumAvailableAddressesInSQLite(w)
+	}
+
+	// Graviton implementation
+	if Store == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	
 	ss, err := Store.LoadSnapshot(0)
 	if err != nil {
 		return fmt.Errorf("failed to load snapshot: %v", err)
@@ -367,6 +427,16 @@ func EnsureMinimumAvailableAddresses(w *wallet.Wallet) error {
 }
 
 func UpdateAddressUsage(transactions []map[string]interface{}) error {
+	// Check which backend we're using
+	if DBBackend == DBTypeSQLite {
+		return UpdateAddressUsageInSQLite(transactions)
+	}
+
+	// Graviton implementation
+	if Store == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	
 	ss, err := Store.LoadSnapshot(0)
 	if err != nil {
 		return fmt.Errorf("failed to load snapshot: %v", err)
@@ -424,6 +494,16 @@ func GetRawTransaction(tree *graviton.Tree, txHash string) ([]byte, error) {
 
 // SaveTransactionToDB serializes the transaction and stores it in the database.
 func SaveTransactionToDB(tx *wire.MsgTx) (chainhash.Hash, error) {
+	// Check which backend we're using
+	if DBBackend == DBTypeSQLite {
+		return SaveTransactionToSQLiteDB(tx)
+	}
+
+	// Graviton implementation
+	if Store == nil {
+		return chainhash.Hash{}, fmt.Errorf("database not initialized")
+	}
+	
 	// Serialize the transaction into raw bytes
 	var buf bytes.Buffer
 	err := tx.Serialize(&buf)
@@ -525,6 +605,16 @@ func ExpireOldChallenges(tree *graviton.Tree) error {
 
 // SaveNewTransaction saves a transaction only if it doesn't already exist
 func SaveNewTransaction(tx *Transaction) error {
+	// Check which backend we're using
+	if DBBackend == DBTypeSQLite {
+		return SaveNewTransactionToSQLite(tx)
+	}
+
+	// Graviton implementation
+	if Store == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	
 	exists, err := TransactionExists(tx.TxID, tx.Vout)
 	if err != nil {
 		return fmt.Errorf("error checking transaction existence: %v", err)
@@ -579,6 +669,16 @@ func SaveNewTransaction(tx *Transaction) error {
 
 // GetUnsentTransactions retrieves all unsent transactions
 func GetUnsentTransactions() ([]Transaction, error) {
+	// Check which backend we're using
+	if DBBackend == DBTypeSQLite {
+		return GetUnsentTransactionsFromSQLite()
+	}
+
+	// Graviton implementation
+	if Store == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+	
 	ss, err := Store.LoadSnapshot(0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load snapshot: %v", err)
@@ -605,6 +705,16 @@ func GetUnsentTransactions() ([]Transaction, error) {
 
 // ClearUnsentTransactions removes transactions from the unsent tree
 func ClearUnsentTransactions() error {
+	// Check which backend we're using
+	if DBBackend == DBTypeSQLite {
+		return ClearUnsentTransactionsFromSQLite()
+	}
+
+	// Graviton implementation
+	if Store == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	
 	ss, err := Store.LoadSnapshot(0)
 	if err != nil {
 		return fmt.Errorf("failed to load snapshot: %v", err)
@@ -631,6 +741,16 @@ func ClearUnsentTransactions() error {
 }
 
 func TransactionExists(txID string, vout uint32) (bool, error) {
+	// Check which backend we're using
+	if DBBackend == DBTypeSQLite {
+		return TransactionExistsInSQLite(txID, vout)
+	}
+
+	// Graviton implementation
+	if Store == nil {
+		return false, fmt.Errorf("database not initialized")
+	}
+	
 	ss, err := Store.LoadSnapshot(0)
 	if err != nil {
 		return false, fmt.Errorf("failed to load snapshot: %v", err)
