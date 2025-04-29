@@ -535,7 +535,7 @@ func SaveNewTransactionToSQLite(tx *Transaction) error {
 		Date:          tx.Date,
 		BlockHeight:   tx.BlockHeight,
 		Vout:          tx.Vout,
-		SentToBackend: tx.SentToBackend,
+		SentToBackend: false, // Always set to false for new transactions
 	}
 
 	// Begin a transaction
@@ -630,6 +630,55 @@ func TransactionExistsInSQLite(txID string, vout uint32) (bool, error) {
 }
 
 // No Graviton migration code needed anymore; SQLite is the only database backend
+
+// GetUnsentTransactionsFromSQLiteUsingSentToBackend retrieves transactions that haven't been sent to the backend using the SentToBackend field
+func GetUnsentTransactionsFromSQLiteUsingSentToBackend() ([]Transaction, error) {
+	var sqliteTxs []SQLiteTransaction
+	var transactions []Transaction
+
+	// Get transactions where SentToBackend is false
+	if err := DB.Where("sent_to_backend = ?", false).Find(&sqliteTxs).Error; err != nil {
+		return nil, err
+	}
+
+	// No unsent transactions
+	if len(sqliteTxs) == 0 {
+		return transactions, nil
+	}
+
+	// Convert to Transaction type
+	for _, tx := range sqliteTxs {
+		transactions = append(transactions, Transaction{
+			TxID:          tx.TxID,
+			WalletName:    tx.WalletName,
+			Address:       tx.Address,
+			Output:        tx.Output,
+			Value:         tx.Value,
+			Date:          tx.Date,
+			BlockHeight:   tx.BlockHeight,
+			Vout:          tx.Vout,
+			SentToBackend: tx.SentToBackend,
+		})
+	}
+
+	return transactions, nil
+}
+
+// MarkTransactionsAsSentInSQLite marks transactions as sent to the backend using the SentToBackend field
+func MarkTransactionsAsSentInSQLite() error {
+	result := DB.Model(&SQLiteTransaction{}).
+		Where("sent_to_backend = ?", false).
+		Updates(map[string]interface{}{
+			"sent_to_backend": true,
+		})
+
+	if result.Error != nil {
+		return result.Error
+	}
+
+	log.Printf("Marked %d transactions as sent to backend", result.RowsAffected)
+	return nil
+}
 
 // GetUnsentAddressesFromSQLite retrieves addresses that haven't been sent to the backend
 func GetUnsentAddressesFromSQLite() ([]Address, error) {

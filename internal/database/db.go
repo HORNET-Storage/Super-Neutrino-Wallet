@@ -67,6 +67,14 @@ func ClearUnsentTransactions() error {
 	return ClearUnsentTransactionsFromSQLite()
 }
 
+func GetUnsentTransactionsUsingSentToBackend() ([]Transaction, error) {
+	return GetUnsentTransactionsFromSQLiteUsingSentToBackend()
+}
+
+func MarkTransactionsAsSent() error {
+	return MarkTransactionsAsSentInSQLite()
+}
+
 func TransactionExists(txID string, vout uint32) (bool, error) {
 	return TransactionExistsInSQLite(txID, vout)
 }
