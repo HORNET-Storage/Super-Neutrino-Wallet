@@ -339,10 +339,10 @@ func DeleteWalletFiles(walletName string) error {
 	jwtKeysDir := filepath.Join(baseDir, "jwtkeys")        // JWT keys directory
 
 	// Paths for wallet-specific files and directories
-	envFile := filepath.Join(walletDir, walletName+".env")                                     // .env file
-	neutrinoWalletDir := filepath.Join(neutrinoDbDir, fmt.Sprintf("%s_wallet", walletName))    // Neutrino wallet directory
-	gravitonDbFile := filepath.Join(baseDir, fmt.Sprintf("%s_wallet_graviton.db", walletName)) // Graviton DB file
-	jwtKeyDir := filepath.Join(jwtKeysDir, walletName)                                         // JWT key directory
+	envFile := filepath.Join(walletDir, walletName+".env")                                  // .env file
+	neutrinoWalletDir := filepath.Join(neutrinoDbDir, fmt.Sprintf("%s_wallet", walletName)) // Neutrino wallet directory
+	sqliteDbFile := filepath.Join(baseDir, fmt.Sprintf("%s_wallet.db", walletName))         // Graviton DB file
+	jwtKeyDir := filepath.Join(jwtKeysDir, walletName)                                      // JWT key directory
 
 	// Delete the wallet .env file
 	if err := os.Remove(envFile); err != nil {
@@ -374,11 +374,11 @@ func DeleteWalletFiles(walletName string) error {
 		log.Printf("Successfully deleted Neutrino wallet directory: %s", neutrinoWalletDir)
 	}
 
-	// Delete the Graviton DB file
-	if err := os.RemoveAll(gravitonDbFile); err != nil {
-		log.Printf("Failed to delete Graviton DB file: %v", err)
+	// Delete the SQLite DB file
+	if err := os.RemoveAll(sqliteDbFile); err != nil {
+		log.Printf("Failed to delete SQLite database file: %v", err)
 	} else {
-		log.Printf("Successfully deleted Graviton DB file or directory: %s", gravitonDbFile)
+		log.Printf("Successfully deleted SQLite database file: %s", sqliteDbFile)
 	}
 
 	// Delete the JWT key directory and its contents
@@ -424,7 +424,7 @@ func Encrypt(plaintext string, password string) string {
 func FormatBlockHeight(height int32) string {
 	// Convert the height to a string
 	heightStr := strconv.FormatInt(int64(height), 10)
-	
+
 	// Format with commas
 	parts := []string{}
 	for i := len(heightStr); i > 0; i -= 3 {
@@ -434,6 +434,6 @@ func FormatBlockHeight(height int32) string {
 		}
 		parts = append([]string{heightStr[start:i]}, parts...)
 	}
-	
+
 	return strings.Join(parts, ",")
 }

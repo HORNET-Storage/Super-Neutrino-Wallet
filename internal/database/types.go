@@ -13,12 +13,13 @@ type Challenge struct {
 }
 
 type Address struct {
-	Index       uint
-	Address     string
-	Status      string
-	AllocatedAt *time.Time
-	UsedAt      *time.Time
-	BlockHeight *uint32
+	Index         uint
+	Address       string
+	Status        string
+	AllocatedAt   *time.Time
+	UsedAt        *time.Time
+	BlockHeight   *uint32
+	SentToBackend bool
 }
 
 type Transaction struct {

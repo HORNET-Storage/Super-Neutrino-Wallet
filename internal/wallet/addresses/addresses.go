@@ -116,9 +116,10 @@ func GenerateAndSaveAddresses(w *wallet.Wallet, count int) ([]btcutil.Address, [
 
 		// Create address struct
 		addrStruct := walletstatedb.Address{
-			Index:   uint(lastReceiveIndex + i + 1),
-			Address: receiveAddr.String(),
-			Status:  walletstatedb.AddressStatusAvailable,
+			Index:         uint(lastReceiveIndex + i + 1),
+			Address:       receiveAddr.String(),
+			Status:        walletstatedb.AddressStatusAvailable,
+			SentToBackend: false,
 		}
 
 		// Save address
@@ -135,9 +136,10 @@ func GenerateAndSaveAddresses(w *wallet.Wallet, count int) ([]btcutil.Address, [
 		newChangeAddresses[i] = changeAddr
 
 		err = walletstatedb.SaveAddressWithType("change", walletstatedb.Address{
-			Index:   uint(lastChangeIndex + i + 1),
-			Address: changeAddr.String(),
-			Status:  walletstatedb.AddressStatusAvailable,
+			Index:         uint(lastChangeIndex + i + 1),
+			Address:       changeAddr.String(),
+			Status:        walletstatedb.AddressStatusAvailable,
+			SentToBackend: false,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to save change address: %v", err)
@@ -149,16 +151,10 @@ func GenerateAndSaveAddresses(w *wallet.Wallet, count int) ([]btcutil.Address, [
 
 // GetUnsentAddresses retrieves all unsent addresses
 func GetUnsentAddresses() ([]walletstatedb.Address, error) {
-	// This function would be modified to use a flag in the SQLiteAddress model
-	// or a separate table to track unsent addresses
-	// For now, we'll get all addresses marked with 'available' status
-	return walletstatedb.GetAddressesWithType("receive")
+	return walletstatedb.GetUnsentAddressesFromSQLite()
 }
 
 // ClearUnsentAddresses clears the unsent status of addresses
 func ClearUnsentAddresses() error {
-	// This would be implemented to mark addresses as sent in the database
-	// For now, we'll return nil as a placeholder
-	log.Println("ClearUnsentAddresses: this function needs implementation with SQLite")
-	return nil
+	return walletstatedb.MarkAddressesAsSentInSQLite()
 }

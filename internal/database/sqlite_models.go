@@ -9,28 +9,29 @@ import (
 // SQLiteAddress represents an address in the wallet
 type SQLiteAddress struct {
 	gorm.Model
-	Index       uint       `gorm:"index;uniqueIndex:idx_addr_type_index"`
-	Address     string     `gorm:"uniqueIndex"`
-	Status      string     `gorm:"index"` // available, allocated, used
-	AllocatedAt *time.Time
-	UsedAt      *time.Time
-	BlockHeight *uint32
-	AddrType    string     `gorm:"index;uniqueIndex:idx_addr_type_index"` // receive or change
+	Index         uint   `gorm:"index;uniqueIndex:idx_addr_type_index"`
+	Address       string `gorm:"uniqueIndex"`
+	Status        string `gorm:"index"` // available, allocated, used
+	AllocatedAt   *time.Time
+	UsedAt        *time.Time
+	BlockHeight   *uint32
+	AddrType      string `gorm:"index;uniqueIndex:idx_addr_type_index"` // receive or change
+	SentToBackend bool   `gorm:"index;default:false"`
 }
 
 // SQLiteTransaction represents a transaction in the wallet
 type SQLiteTransaction struct {
 	gorm.Model
-	TxID          string     `gorm:"uniqueIndex:idx_txid_vout"`
-	WalletName    string     `gorm:"index"`
-	Address       string     `gorm:"index"`
+	TxID          string `gorm:"uniqueIndex:idx_txid_vout"`
+	WalletName    string `gorm:"index"`
+	Address       string `gorm:"index"`
 	Output        string
 	Value         string
-	Date          time.Time  `gorm:"index"`
-	BlockHeight   *int32     `gorm:"index"`
-	Vout          uint32     `gorm:"uniqueIndex:idx_txid_vout"`
-	SentToBackend bool       `gorm:"index"`
-	RawTx         []byte     // storing the serialized transaction
+	Date          time.Time `gorm:"index"`
+	BlockHeight   *int32    `gorm:"index"`
+	Vout          uint32    `gorm:"uniqueIndex:idx_txid_vout"`
+	SentToBackend bool      `gorm:"index"`
+	RawTx         []byte    // storing the serialized transaction
 }
 
 // SQLiteRawTransaction stores raw transaction data by hash
