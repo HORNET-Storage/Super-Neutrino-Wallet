@@ -14,7 +14,6 @@ import (
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/addresses"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/formatter"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
-	"github.com/deroproject/graviton"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/spf13/viper"
@@ -85,19 +84,7 @@ func (s *API) HandleChallengeRequest(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 
-	// Save the challenge in the Graviton database
-	ss, err := walletstatedb.Store.LoadSnapshot(0)
-	if err != nil {
-		http.Error(w, "Failed to load snapshot", http.StatusInternalServerError)
-		return
-	}
-
-	challengeTree, err := ss.GetTree(walletstatedb.ChallengeTreeName)
-	if err != nil {
-		http.Error(w, "Failed to get challenge tree", http.StatusInternalServerError)
-		return
-	}
-
+	// Save the challenge in the SQLite database
 	newChallenge := walletstatedb.Challenge{
 		Challenge: challenge,
 		Hash:      hash,
@@ -106,14 +93,8 @@ func (s *API) HandleChallengeRequest(w http.ResponseWriter, _ *http.Request) {
 		CreatedAt: time.Now(),
 	}
 
-	if err := walletstatedb.SaveChallenge(challengeTree, newChallenge); err != nil {
+	if err := walletstatedb.SaveChallenge(newChallenge); err != nil {
 		http.Error(w, "Failed to save challenge", http.StatusInternalServerError)
-		return
-	}
-
-	// Commit the tree
-	if _, err := graviton.Commit(challengeTree); err != nil {
-		http.Error(w, "Failed to commit challenge", http.StatusInternalServerError)
 		return
 	}
 
@@ -163,23 +144,12 @@ func (s *API) VerifyChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load Graviton snapshot and tree
-	ss, err := walletstatedb.Store.LoadSnapshot(0)
-	if err != nil {
-		http.Error(w, "Failed to load snapshot", http.StatusInternalServerError)
-		return
-	}
-
-	challengeTree, err := ss.GetTree(walletstatedb.ChallengeTreeName)
-	if err != nil {
-		http.Error(w, "Failed to get challenge tree", http.StatusInternalServerError)
-		return
-	}
-
 	// Retrieve the challenge from the database
 	challengeHash := sha256.Sum256([]byte(verifyPayload.Challenge))
 	hashString := hex.EncodeToString(challengeHash[:])
-	challenge, err := walletstatedb.GetChallenge(challengeTree, hashString)
+	
+	challenge, err := walletstatedb.GetChallenge(hashString)
+	
 	if err != nil || challenge.Status != "unused" {
 		http.Error(w, "Invalid or expired challenge", http.StatusUnauthorized)
 		return
@@ -187,7 +157,7 @@ func (s *API) VerifyChallenge(w http.ResponseWriter, r *http.Request) {
 
 	// Check if the challenge has expired (older than 2 minutes)
 	if time.Since(challenge.CreatedAt) > 2*time.Minute {
-		walletstatedb.MarkChallengeAsUsed(challengeTree, challenge.Hash)
+		walletstatedb.MarkChallengeAsUsed(challenge.Hash)
 		http.Error(w, "Challenge expired", http.StatusUnauthorized)
 		return
 	}
@@ -204,7 +174,7 @@ func (s *API) VerifyChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Mark the challenge as used
-	if err := walletstatedb.MarkChallengeAsUsed(challengeTree, challenge.Hash); err != nil {
+	if err := walletstatedb.MarkChallengeAsUsed(challenge.Hash); err != nil {
 		http.Error(w, "Failed to mark challenge as used", http.StatusInternalServerError)
 		return
 	}

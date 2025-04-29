@@ -129,10 +129,15 @@ func saveNewTransactions(w *wallet.Wallet, walletName string) error {
 }
 
 func sendUnsentTransactions() error {
-	// Get unsent transactions
-	unsentTxs, err := walletstatedb.GetUnsentTransactions()
+	// Get unsent transactions using the SentToBackend field
+	unsentTxs, err := walletstatedb.GetUnsentTransactionsUsingSentToBackend()
 	if err != nil {
-		return fmt.Errorf("error getting unsent transactions: %v", err)
+		log.Printf("Error getting unsent transactions using SentToBackend: %v, falling back to old method", err)
+		// Fallback to old method
+		unsentTxs, err = walletstatedb.GetUnsentTransactions()
+		if err != nil {
+			return fmt.Errorf("error getting unsent transactions: %v", err)
+		}
 	}
 
 	if len(unsentTxs) == 0 {
@@ -177,10 +182,15 @@ func sendUnsentTransactions() error {
 		return fmt.Errorf("backend returned non-success status: %s - %s", result.Status, result.Message)
 	}
 
-	// Only clear transactions after confirmed success
-	err = walletstatedb.ClearUnsentTransactions()
+	// Mark transactions as sent using the SentToBackend field
+	err = walletstatedb.MarkTransactionsAsSent()
 	if err != nil {
-		return fmt.Errorf("error clearing unsent transactions: %v", err)
+		log.Printf("Error marking transactions as sent using SentToBackend: %v, falling back to old method", err)
+		// Fallback to old method
+		err = walletstatedb.ClearUnsentTransactions()
+		if err != nil {
+			return fmt.Errorf("error clearing unsent transactions: %v", err)
+		}
 	}
 
 	log.Printf("Successfully sent and cleared %d transactions: %s", len(formattedTxs), result.Message)
