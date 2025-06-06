@@ -20,12 +20,12 @@ import (
 
 const (
 	// Sync intervals - optimized for better responsiveness and lower resource usage
-	baseSyncInterval  = 10 * time.Minute  // Base interval between syncs
-	minSyncInterval   = 2 * time.Minute   // Minimum interval for active wallets
-	maxSyncInterval   = 30 * time.Minute  // Maximum interval for inactive wallets
-	
+	baseSyncInterval = 10 * time.Minute // Base interval between syncs
+	minSyncInterval  = 2 * time.Minute  // Minimum interval for active wallets
+	maxSyncInterval  = 30 * time.Minute // Maximum interval for inactive wallets
+
 	// Server configuration
-	useHTTPS     bool = false
+	useHTTPS bool = false
 )
 
 func NewWalletServer(wallet *wallet.Wallet, chainParams *chaincfg.Params, chainService *neutrino.ChainService,

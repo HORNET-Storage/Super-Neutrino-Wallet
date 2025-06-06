@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"runtime"
@@ -48,6 +49,7 @@ func NewServer() (*Server, error) {
 		listener:    listener,
 		commands:    make(chan Command),
 		connections: make(map[int]net.Conn),
+		subscribers: make(map[net.Conn]bool),
 	}
 
 	go server.accept()
@@ -93,20 +95,52 @@ func (s *Server) accept() {
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
-	// Don't use defer conn.Close() here
-	var cmd Command
-	decoder := json.NewDecoder(conn)
-	if err := decoder.Decode(&cmd); err != nil {
-		fmt.Printf("Error decoding command: %v\n", err)
-		return
+	defer func() {
+		s.RemoveSubscriber(conn)
+		conn.Close()
+	}()
+
+	// Add connection as subscriber for progress updates
+	s.AddSubscriber(conn)
+
+	// Handle incoming commands
+	buffer := make([]byte, 65536) // 64KB buffer
+
+	for {
+		n, err := conn.Read(buffer)
+		if err != nil {
+			if err != io.EOF {
+				log.Printf("Failed to read from connection: %v", err)
+			}
+			return
+		}
+
+		// Check if this is a command message (has an ID field)
+		var message struct {
+			ID int `json:"id"`
+		}
+
+		if err := json.Unmarshal(buffer[:n], &message); err != nil {
+			log.Printf("Failed to parse message: %v", err)
+			continue
+		}
+
+		// If it has an ID, it's a command
+		if message.ID > 0 {
+			var cmd Command
+			if err := json.Unmarshal(buffer[:n], &cmd); err != nil {
+				log.Printf("Failed to unmarshal command: %v", err)
+				continue
+			}
+
+			// Store the connection with the command ID for response
+			s.mutex.Lock()
+			s.connections[cmd.ID] = conn
+			s.mutex.Unlock()
+
+			s.commands <- cmd
+		}
 	}
-
-	// Store the connection with the command ID
-	s.mutex.Lock()
-	s.connections[cmd.ID] = conn
-	s.mutex.Unlock()
-
-	s.commands <- cmd
 }
 
 func (s *Server) Commands() <-chan Command {
@@ -140,6 +174,38 @@ func (s *Server) SendResponse(id int, response Response) {
 	// Close the connection after sending the response
 	conn.Close()
 	delete(s.connections, id)
+}
+
+func (s *Server) BroadcastProgress(update SyncProgressUpdate) {
+	data, err := json.Marshal(update)
+	if err != nil {
+		log.Printf("Failed to marshal progress update: %v", err)
+		return
+	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	for conn := range s.subscribers {
+		_, err := conn.Write(data)
+		if err != nil {
+			log.Printf("Failed to send progress update: %v", err)
+			// Remove failed connection from subscribers
+			delete(s.subscribers, conn)
+		}
+	}
+}
+
+func (s *Server) AddSubscriber(conn net.Conn) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.subscribers[conn] = true
+}
+
+func (s *Server) RemoveSubscriber(conn net.Conn) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	delete(s.subscribers, conn)
 }
 
 func (s *Server) Close() error {

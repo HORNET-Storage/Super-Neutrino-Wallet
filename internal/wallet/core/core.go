@@ -118,7 +118,7 @@ func InitializeWallet(seedPhrase string, pubPass []byte, privPass []byte, baseDi
 			log.Printf("Error updating last scanned block height: %v", err)
 		} else {
 			formattedLastScanned := utils.FormatBlockHeight(lastScannedHeight)
-				log.Printf("Updated last scanned block height to %s", formattedLastScanned)
+			log.Printf("Updated last scanned block height to %s", formattedLastScanned)
 		}
 		w, err = loader.CreateNewWalletExtendedKey(pubPass, privPass, rootKey, birthday)
 		createDuration := time.Since(createStart)
@@ -230,7 +230,7 @@ func InitializeWallet(seedPhrase string, pubPass []byte, privPass []byte, baseDi
 
 	addresses.HandleAddressGeneration(w, chainClient, needsAddresses, freshWallet)
 
-	formatter.PerformRescanAndProcessTransactions(w, chainClient, chainParams, walletName)
+	formatter.PerformRescanAndProcessTransactions(w, chainClient, chainParams, walletName, nil)
 
 	_, lastScannedHeight, err := chainClient.GetBestBlock()
 	if err != nil {
@@ -241,7 +241,7 @@ func InitializeWallet(seedPhrase string, pubPass []byte, privPass []byte, baseDi
 			log.Printf("Error updating last scanned block height: %v", err)
 		} else {
 			formattedLastScanned := utils.FormatBlockHeight(lastScannedHeight)
-				log.Printf("Updated last scanned block height to %s", formattedLastScanned)
+			log.Printf("Updated last scanned block height to %s", formattedLastScanned)
 		}
 	}
 
@@ -267,7 +267,7 @@ func InitialChainServiceSync(chainService *neutrino.ChainService) {
 			continue
 		}
 		formattedHeight := utils.FormatBlockHeight(bestBlock.Height)
-			log.Printf("Current block height: %s", formattedHeight)
+		log.Printf("Current block height: %s", formattedHeight)
 		logger.Info("Current block height: ", formattedHeight)
 
 		currentHash, err := chainService.GetBlockHash(int64(bestBlock.Height))

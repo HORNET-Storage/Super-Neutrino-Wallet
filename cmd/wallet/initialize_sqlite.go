@@ -38,7 +38,7 @@ func InitializeSQLite() error {
 
 	// Check if SQLite DB exists
 	sqliteExists := fileExists(sqliteDBPath)
-	
+
 	// Special case for legacy database path
 	if !sqliteExists {
 		legacyPath := "/Users/siphiwetapisi/my_go/wallet-cleanup/btc-wallet-btcsuite/zambi_wallet.db"
@@ -70,7 +70,7 @@ func fileExists(path string) bool {
 	return !info.IsDir()
 }
 
-// We don't need the initDB function anymore as SQLite is initialized 
+// We don't need the initDB function anymore as SQLite is initialized
 // elsewhere in the codebase when needed
 
 // getWalletBaseDir retrieves the wallet directory from configuration
@@ -80,7 +80,7 @@ func getWalletBaseDir() string {
 	if dir != "" {
 		return dir
 	}
-	
+
 	// Then try base_dir which is always set in initConfig
 	return viper.GetString("base_dir")
 }
@@ -92,7 +92,7 @@ func getWalletName() string {
 	if walletName != "" {
 		return walletName
 	}
-	
+
 	// Otherwise, check viper
 	return viper.GetString("wallet_name")
 }
