@@ -332,18 +332,17 @@ func PerformRescan(config RescanConfig) error {
 			totalTime.Round(time.Second), speed))
 	}
 
-
 	// Wait for full synchronization to complete or timeout
 	log.Printf("Waiting up to %v for final wallet synchronization...", syncTimeoutDuration)
 	logger.Info(fmt.Sprintf("Starting final wallet synchronization (up to %v)...", syncTimeoutDuration))
 	fullSyncTimeout := time.After(syncTimeoutDuration)
-	
+
 	// Create a faster ticker for user feedback during final sync
 	syncCheckTicker := time.NewTicker(1 * time.Second)
 	feedbackTicker := time.NewTicker(3 * time.Second)
 	defer syncCheckTicker.Stop()
 	defer feedbackTicker.Stop()
-	
+
 	// Define rotating messages for final sync phase
 	finalSyncMessages := []string{
 		"Finalizing wallet synchronization...",
@@ -363,14 +362,14 @@ FullSyncLoop:
 			log.Println("Final wallet synchronization timed out, but address scanning completed")
 			logger.Info("Wallet synchronization timed out, but address scanning completed")
 			break FullSyncLoop
-			
+
 		case <-feedbackTicker.C:
 			// Send rotating progress messages during final sync
 			elapsedTime := time.Since(syncStartTime).Round(time.Second)
 			statusMsg := fmt.Sprintf("%s (elapsed: %v)", finalSyncMessages[messageIndex], elapsedTime)
 			logger.Info(statusMsg)
 			messageIndex = (messageIndex + 1) % len(finalSyncMessages)
-			
+
 		case <-syncCheckTicker.C:
 			if !config.Wallet.SynchronizingToNetwork() {
 				totalSyncTime := time.Since(syncStartTime).Round(time.Second)
@@ -405,7 +404,7 @@ FullSyncLoop:
 	log.Printf("Final wallet balance after optimized rescan: %d satoshis", balance)
 	totalProcessTime := time.Since(startTime)
 	log.Printf("Transaction recovery process completed in %v", totalProcessTime)
-	logger.Info(fmt.Sprintf("Transaction recovery process completed in %v (final balance: %d satoshis)", 
+	logger.Info(fmt.Sprintf("Transaction recovery process completed in %v (final balance: %d satoshis)",
 		totalProcessTime.Round(time.Second), balance))
 
 	return nil

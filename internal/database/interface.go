@@ -37,11 +37,11 @@ type DatabaseInterface interface {
 	MarkAddressAsUsed(address string, blockHeight uint32) error
 	AllocateAddress() (*Address, error)
 	GetLastAddressIndex() (int, error)
-	
+
 	// Block height operations
 	SaveBlockHeight(height int32) error
 	GetBlockHeight() (int32, error)
-	
+
 	// Transaction operations
 	SaveRawTransaction(txHash string, rawTx []byte) error
 	GetRawTransaction(txHash string) ([]byte, error)
@@ -50,20 +50,20 @@ type DatabaseInterface interface {
 	GetUnsentTransactions() ([]Transaction, error)
 	ClearUnsentTransactions() error
 	TransactionExists(txID string, vout uint32) (bool, error)
-	
+
 	// Challenge operations
 	SaveChallenge(challenge Challenge) error
 	GetChallenge(hash string) (*Challenge, error)
 	MarkChallengeAsUsed(hash string) error
 	ExpireOldChallenges() error
-	
+
 	// Address generation
 	GenerateNewAddresses(w *wallet.Wallet, count int) error
 	EnsureMinimumAvailableAddresses(w *wallet.Wallet) error
-	
+
 	// Address retrieval
 	RetrieveAddresses() ([]btcutil.Address, []btcutil.Address, error)
-	
+
 	// Last scanned block height
 	SetLastScannedBlockHeight(height int32) error
 	GetLastScannedBlockHeight() (int32, error)

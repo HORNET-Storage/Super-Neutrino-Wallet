@@ -2,6 +2,7 @@ package formatter
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,11 +10,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
+	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/ipc"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/addresses"
 	utils "github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/utils"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/lib/rescanner"
@@ -23,9 +27,42 @@ import (
 	"github.com/spf13/viper"
 )
 
-func PerformRescanAndProcessTransactions(w *wallet.Wallet, chainClient *chain.NeutrinoClient, chainParams *chaincfg.Params, walletName string) error {
+func PerformRescanAndProcessTransactions(w *wallet.Wallet, chainClient *chain.NeutrinoClient, chainParams *chaincfg.Params, walletName string, ipcServer interface{}) error {
 
 	log.Println("Scanning for transactions")
+
+	// Type assert ipcServer to *ipc.Server
+	var server *ipc.Server
+	if ipcServer != nil {
+		if s, ok := ipcServer.(*ipc.Server); ok {
+			server = s
+		}
+	}
+
+	// Get current block info for accurate reporting
+	var currentBlock, targetBlock int32
+	if _, currentBlockHeight, err := chainClient.GetBestBlock(); err == nil {
+		currentBlock = currentBlockHeight
+		targetBlock = currentBlockHeight // During address scan, we're at the target
+	}
+
+	// Send initial scan progress update
+	initialScanUpdate := ipc.SyncProgressUpdate{
+		Type:         "sync_progress",
+		Progress:     100.0, // Chain is already synced at this point
+		CurrentBlock: currentBlock,
+		TargetBlock:  targetBlock,
+		ChainSynced:  true,
+		ScanProgress: 0.0,
+		Stage:        "address_scan",
+	}
+
+	if server != nil {
+		server.BroadcastProgress(initialScanUpdate)
+	}
+
+	// Also output to stdout for CLI clients
+	outputProgressToStdout(initialScanUpdate)
 
 	lastScannedBlockHeight, err := walletstatedb.GetLastScannedBlockHeight()
 	if err != nil {
@@ -51,10 +88,37 @@ func PerformRescanAndProcessTransactions(w *wallet.Wallet, chainClient *chain.Ne
 		IsImportedWallet: isImportedWallet,
 	}
 
+	// Create progress tracking context and channel
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Start progress tracking goroutine if we have an IPC server
+	if server != nil {
+		go trackRescanProgress(ctx, server, currentBlock, targetBlock)
+	}
+
 	err = rescanner.PerformRescan(rescanConfig)
 	if err != nil {
 		return fmt.Errorf("error during rescan: %v", err)
 	}
+
+	// Send final scan complete update
+	completeUpdate := ipc.SyncProgressUpdate{
+		Type:         "sync_progress",
+		Progress:     100.0,
+		CurrentBlock: currentBlock,
+		TargetBlock:  targetBlock,
+		ChainSynced:  true,
+		ScanProgress: 100.0,
+		Stage:        "complete",
+	}
+
+	if server != nil {
+		server.BroadcastProgress(completeUpdate)
+	}
+
+	// Also output to stdout for CLI clients
+	outputProgressToStdout(completeUpdate)
 
 	if viper.GetBool("relay_wallet_set") && viper.GetString("wallet_name") == walletName {
 
@@ -393,4 +457,52 @@ func generateSignature(apiKey, timestamp string, data []byte) string {
 	h := hmac.New(sha256.New, []byte(apiKey))
 	h.Write([]byte(message))
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// trackRescanProgress sends periodic scan progress updates during the rescan process
+func trackRescanProgress(ctx context.Context, server *ipc.Server, currentBlock, targetBlock int32) {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	startTime := time.Now()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Calculate progress based on elapsed time (rough estimate)
+			elapsed := time.Since(startTime)
+			// Assume address scanning takes around 30-60 seconds for estimation
+			estimatedDuration := 45 * time.Second
+			progress := math.Min(95.0, (float64(elapsed)/float64(estimatedDuration))*100.0)
+
+			scanUpdate := ipc.SyncProgressUpdate{
+				Type:         "sync_progress",
+				Progress:     100.0, // Chain is already synced
+				CurrentBlock: currentBlock,
+				TargetBlock:  targetBlock,
+				ChainSynced:  true,
+				ScanProgress: progress,
+				Stage:        "address_scan",
+			}
+
+			server.BroadcastProgress(scanUpdate)
+
+			// Also output to stdout for CLI clients
+			outputProgressToStdout(scanUpdate)
+		}
+	}
+}
+
+// outputProgressToStdout sends progress updates to stdout for CLI clients (like Electron)
+func outputProgressToStdout(update ipc.SyncProgressUpdate) {
+	// Output JSON format for easy parsing by Electron app
+	jsonData, err := json.Marshal(update)
+	if err != nil {
+		log.Printf("Error marshaling progress update for stdout: %v", err)
+		return
+	}
+
+	// Output to stdout with a newline for line-by-line parsing
+	fmt.Fprintf(os.Stdout, "%s\n", string(jsonData))
 }

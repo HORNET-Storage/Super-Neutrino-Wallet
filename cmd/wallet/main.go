@@ -11,21 +11,21 @@ import (
 func main() {
 	// Set SQLite as the default database backend
 	walletstatedb.SetDatabaseBackend(walletstatedb.DBTypeSQLite)
-	
+
 	// Init config first so we can get paths
 	initConfig()
-	
+
 	// Run SQLite initialization
 	if err := InitializeSQLite(); err != nil {
 		fmt.Printf("Warning: SQLite initialization error: %v\n", err)
 	}
-	
+
 	// Handle the migrate command separately to avoid using deprecated Graviton code
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
 		// Extract flags
 		walletName := "default"
 		baseDir := "./wallets"
-		
+
 		for i := 2; i < len(os.Args); i++ {
 			if os.Args[i] == "-w" || os.Args[i] == "--wallet" {
 				if i+1 < len(os.Args) {
@@ -39,7 +39,7 @@ func main() {
 				}
 			}
 		}
-		
+
 		fmt.Printf("Migration complete for wallet '%s'.\n", walletName)
 		fmt.Println("All wallets now use SQLite database backend.")
 		fmt.Printf("Database located at: %s/%s_wallet.db\n", baseDir, walletName)

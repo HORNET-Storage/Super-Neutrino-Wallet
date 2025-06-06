@@ -147,9 +147,9 @@ func (s *API) VerifyChallenge(w http.ResponseWriter, r *http.Request) {
 	// Retrieve the challenge from the database
 	challengeHash := sha256.Sum256([]byte(verifyPayload.Challenge))
 	hashString := hex.EncodeToString(challengeHash[:])
-	
+
 	challenge, err := walletstatedb.GetChallenge(hashString)
-	
+
 	if err != nil || challenge.Status != "unused" {
 		http.Error(w, "Invalid or expired challenge", http.StatusUnauthorized)
 		return
