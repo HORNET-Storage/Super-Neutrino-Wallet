@@ -68,7 +68,7 @@ require (
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
 	golang.org/x/sync v0.13.0 // indirect
-	golang.org/x/term v0.18.0 // indirect
+	golang.org/x/term v0.29.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
@@ -78,12 +78,12 @@ require (
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.1.0
 	github.com/btcsuite/btcwallet v0.16.9
 	github.com/checksum0/go-electrum v0.0.0-20220912200153-b862ac442cf9
-	github.com/golang-jwt/jwt/v4 v4.5.0
+	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/joho/godotenv v1.5.1
 	github.com/nbd-wtf/go-nostr v0.35.0
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	github.com/tyler-smith/go-bip39 v1.1.0
-	golang.org/x/crypto v0.21.0
-	golang.org/x/sys v0.18.0 // indirect
+	golang.org/x/crypto v0.35.0
+	golang.org/x/sys v0.30.0 // indirect
 )
