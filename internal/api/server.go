@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
@@ -181,4 +182,49 @@ func (a *API) WalletAPIMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		log.Println("Wallet API Token is valid")
 		next.ServeHTTP(w, r)
 	}
+}
+
+type HealthStatus struct {
+	Status       string `json:"status"`
+	Timestamp    string `json:"timestamp"`
+	WalletLocked bool   `json:"wallet_locked"`
+	ChainSynced  bool   `json:"chain_synced"`
+	PeerCount    int32  `json:"peer_count"`
+}
+
+type HealthCheckRequest struct {
+	RequestID string `json:"request_id,omitempty"`
+}
+
+func (a *API) HandleHealthCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var req HealthCheckRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	health := HealthStatus{
+		Status:    "healthy",
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	if a.Wallet != nil {
+		health.WalletLocked = a.Wallet.Locked()
+	}
+
+	if a.ChainService != nil {
+		health.ChainSynced = a.ChainService.IsCurrent()
+		peers, _, _ := a.ChainService.ConnectedPeers()
+		health.PeerCount = int32(len(peers))
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(health)
 }
