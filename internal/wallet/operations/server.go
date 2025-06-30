@@ -93,8 +93,11 @@ func (s *WalletServer) StartHTTPSServer() error {
 	// Route for verifying challenge and issuing JWT
 	http.HandleFunc("/verify", s.API.CORSMiddleware(s.API.VerifyChallenge))
 
-	// Health check endpoint (wallet API authentication required)
+	// Health check endpoint for relay (wallet API authentication required)
 	http.HandleFunc("/health", s.API.CORSMiddleware(s.API.WalletAPIMiddleware(s.API.HandleHealthCheck)))
+	
+	// Health check endpoint for panel (JWT authentication required)
+	http.HandleFunc("/panel-health", s.API.CORSMiddleware(s.API.JWTMiddleware(s.API.HandlePanelHealthCheck)))
 
 	// Set up the server configuration (common for both HTTP and HTTPS)
 	server := &http.Server{
