@@ -228,3 +228,30 @@ func (a *API) HandleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(health)
 }
+
+func (a *API) HandlePanelHealthCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	health := HealthStatus{
+		Status:    "healthy",
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	if a.Wallet != nil {
+		health.WalletLocked = a.Wallet.Locked()
+	}
+
+	if a.ChainService != nil {
+		health.ChainSynced = a.ChainService.IsCurrent()
+		peers, _, _ := a.ChainService.ConnectedPeers()
+		health.PeerCount = int32(len(peers))
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(health)
+}
