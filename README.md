@@ -94,11 +94,15 @@ Navigate through the application by entering the number corresponding to your de
 
 Follow the on-screen prompts for each option. Make sure to securely store any seed phrases or passwords you create or use.
 
+**Important Note:** First-time blockchain syncing can take considerable time depending on your internet connection, system resources, and connected peers. The wallet needs to sync with the Bitcoin network before it can display accurate balance and transaction information.
+
 ## Configuration
 
 The wallet uses a configuration file (`config.json`) for various settings. This wallet is specifically designed to support payment for subscriptions in the [HORNETS Nostr Relay](https://github.com/HORNET-Storage/HORNETS-Nostr-Relay) project.
 
 ### Setting Up config.json
+
+The `config.json` file is automatically generated when you first start the wallet and go through the setup process. After the initial setup:
 
 1. Locate the `config.json` file in the root directory of the project.
 2. Open it with a text editor.
