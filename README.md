@@ -1,6 +1,6 @@
 # Super Neutrino - BTC Desktop Wallet
 
-A secure and feature-rich Bitcoin wallet application built with Go.
+A secure and feature-rich Bitcoin wallet application built with Go. While originally designed to support payment for subscriptions in the [HORNETS Nostr Relay](https://github.com/HORNET-Storage/HORNETS-Nostr-Relay) ecosystem, it can be used as a standalone Bitcoin wallet. Use it via terminal, the [HORNETS Relay Panel](https://github.com/HORNET-Storage/HORNETS-Relay-Panel), or the [Nestr client](https://github.com/HORNET-Storage/nestr).
 
 ## Table of Contents
 
@@ -96,23 +96,93 @@ Follow the on-screen prompts for each option. Make sure to securely store any se
 
 ## Configuration
 
-The wallet uses a configuration file (`config.json`) for various settings. Before using the wallet, you must set up this configuration file correctly.
+The wallet uses a configuration file (`config.json`) for various settings. This wallet is specifically designed to support payment for subscriptions in the [HORNETS Nostr Relay](https://github.com/HORNET-Storage/HORNETS-Nostr-Relay) project.
 
 ### Setting Up config.json
 
 1. Locate the `config.json` file in the root directory of the project.
 2. Open it with a text editor.
-3. Find the `user_pubkey` field and set your public key. This is crucial for authentication and authorization.
+3. Configure the essential fields as described below.
 
-Example `config.json`:
+**Required Configuration Fields:**
+
+- `user_pubkey`: Your Nostr public key (same as used in the relay panel)
+- `wallet_api_key`: API key from the relay's config.yaml
+- `wallet_name`: Must be set to "default" for relay integration
+- `network`: Bitcoin network ("mainnet")
+- `api_port`: Port for the API server (default: 9003)
+
+### Getting the API Key from HORNETS Relay
+
+The `wallet_api_key` must be obtained from your HORNETS Nostr Relay configuration:
+
+1. **Locate your relay's config.yaml file**
+2. **Find the wallet section:**
+   ```yaml
+   wallet:
+     key: c3eb99c13ca2a2f93b9fbcdbb0666bd5faf4595bd07a73f358b330eda86da658
+     name: default
+     url: http://localhost:9003
+   ```
+3. **Copy the `key` value** and use it as your `wallet_api_key` in the wallet's config.json
+
+### Setting Up Your Public Key
+
+The `user_pubkey` should be your Nostr public key that you use with:
+- The [HORNETS Relay Panel](https://github.com/HORNET-Storage/HORNETS-Relay-Panel)
+- Your NIP-07 compatible browser extension (like Alby, nos2x, etc.)
+
+To get your public key:
+1. Use a NIP-07 compatible browser extension
+2. Your extension provides `window.nostr.getPublicKey()` method
+3. Use the same public key in both the relay panel and this wallet
+
+**Complete Configuration Example:**
 
 ```json
 {
-  "user_pubkey": "your_public_key_here"
+  "add_peers": [
+    "bitcoin.aranguren.org:8333",
+    "bitcoin.bs.ts.net:8333"
+  ],
+  "address_gap_limit": 20,
+  "allowed_origin": "http://localhost:3000",
+  "api_port": 9003,
+  "backup_interval": "24h",
+  "backup_path": "./wallet_backup",
+  "base_dir": "/path/to/your/wallet/directory",
+  "cert_file": "server.crt",
+  "dust_limit": 546,
+  "env": "development",
+  "fee_per_kb": 1000,
+  "jwt_keys_dir": "./jwtkeys",
+  "key_file": "server.key",
+  "log_level": "debug",
+  "max_peers": 125,
+  "min_peers": 3,
+  "network": "mainnet",
+  "relay_backend_url": "http://localhost:9002",
+  "rpc_password": "rpcpassword",
+  "rpc_server": "127.0.0.1:8332",
+  "rpc_user": "rpcuser",
+  "server_mode": true,
+  "sync_interval": "10m",
+  "tor_proxy": "127.0.0.1:9050",
+  "tx_max_size": 100000,
+  "use_https": false,
+  "use_tor": false,
+  "user_pubkey": "your_nostr_public_key_here",
+  "wallet_api_key": "key_from_relay_config_yaml",
+  "wallet_db_path": "./dev_wallet.db",
+  "wallet_dir": "./wallets",
+  "wallet_name": "default"
 }
 ```
 
-Replace `"your_public_key_here"` with your actual public key.
+**Important Notes:**
+- The `wallet_name` MUST be set to "default" for the relay to properly identify the wallet
+- Ensure the `api_port` matches the port specified in your relay's config.yaml
+- The `user_pubkey` should be the same public key you use for signing events in the relay panel
 
 ## Security
 
