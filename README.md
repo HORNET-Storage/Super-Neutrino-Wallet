@@ -98,7 +98,7 @@ Follow the on-screen prompts for each option. Make sure to securely store any se
 
 ## Configuration
 
-The wallet uses a configuration file (`config.json`) for various settings. This wallet is specifically designed to support payment for subscriptions in the [HORNETS Nostr Relay](https://github.com/HORNET-Storage/HORNETS-Nostr-Relay) project.
+The wallet uses a configuration file (`config.json`) for various settings.
 
 ### Setting Up config.json
 
