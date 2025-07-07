@@ -120,14 +120,21 @@ The `config.json` file is automatically generated when you first start the walle
 
 The `wallet_api_key` must be obtained from your HORNETS Nostr Relay configuration:
 
-1. **Locate your relay's config.yaml file**
-2. **Find the wallet section:**
+1. **Via Relay Panel (Recommended):**
+   - Open your [HORNETS Relay Panel](https://github.com/HORNET-Storage/HORNETS-Relay-Panel)
+   - Navigate to **Advanced Settings**
+   - Go to the **Wallet** section to find your wallet configuration details including the API key
+
+2. **Via config.yaml file:**
+   - Locate your relay's config.yaml file
+   - Find the wallet section:
    ```yaml
    wallet:
      key: c3eb99c13ca2a2f93b9fbcdbb0666bd5faf4595bd07a73f358b330eda86da658
      name: default
      url: http://localhost:9003
    ```
+
 3. **Copy the `key` value** and use it as your `wallet_api_key` in the wallet's config.json
 
 ### Setting Up Your Public Key
