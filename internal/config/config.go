@@ -39,7 +39,7 @@ func setDefaults() {
 	// Set defaults for development and production environments
 	if env == "development" {
 		viper.SetDefault("relay_backend_url", "http://localhost:9002")
-		viper.SetDefault("allowed_origin", "http://localhost:3000")
+		viper.SetDefault("allowed_origin", "http://localhost:9002")
 		viper.SetDefault("wallet_db_path", "./dev_wallet.db")
 		viper.SetDefault("log_level", "debug")
 	} else if env == "production" {
