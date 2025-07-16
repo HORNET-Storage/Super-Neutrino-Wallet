@@ -13,6 +13,7 @@ import (
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/utils"
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
+	"golang.org/x/term"
 )
 
 const (
@@ -55,9 +56,12 @@ func LoadWallet(walletName string) (string, string, string, time.Time, error) {
 	}
 
 	fmt.Print("Enter your wallet password: ")
-	reader := bufio.NewReader(os.Stdin)
-	password, _ := reader.ReadString('\n')
-	password = strings.TrimSpace(password)
+	passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return "", "", "", time.Time{}, fmt.Errorf("error reading password: %v", err)
+	}
+	password := strings.TrimSpace(string(passwordBytes))
+	fmt.Println() // Add newline after password input
 
 	seedPhrase, err := utils.Decrypt(encryptedSeedPhrase, password)
 	if err != nil {
@@ -170,8 +174,12 @@ func DeleteWallet(reader *bufio.Reader) error {
 
 	// Prompt for the wallet password
 	fmt.Print("Enter your wallet password: ")
-	password, _ := reader.ReadString('\n')
-	password = strings.TrimSpace(password)
+	passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return fmt.Errorf("error reading password: %v", err)
+	}
+	password := strings.TrimSpace(string(passwordBytes))
+	fmt.Println() // Add newline after password input
 
 	// Attempt to decrypt the seed phrase using the provided password
 	_, err = utils.Decrypt(encryptedSeedPhrase, password)

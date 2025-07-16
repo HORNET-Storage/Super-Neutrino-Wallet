@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/utils"
 	"github.com/spf13/viper"
 	"github.com/tyler-smith/go-bip39"
+	"golang.org/x/term"
 )
 
 const (
@@ -45,8 +47,12 @@ func CreateNewWallet(reader *bufio.Reader) error {
 	fmt.Println("Please write this down and keep it safe.")
 
 	fmt.Print("Enter a password to encrypt your wallet: ")
-	password, _ := reader.ReadString('\n')
-	password = strings.TrimSpace(password)
+	passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return fmt.Errorf("error reading password: %v", err)
+	}
+	password := strings.TrimSpace(string(passwordBytes))
+	fmt.Println() // Add newline after password input
 
 	encryptedMnemonic := utils.Encrypt(mnemonic, password)
 
@@ -208,8 +214,12 @@ func ExistingWallet(reader *bufio.Reader) error {
 	}
 
 	fmt.Print("Enter a password to encrypt your wallet: ")
-	password, _ := reader.ReadString('\n')
-	password = strings.TrimSpace(password)
+	passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return fmt.Errorf("error reading password: %v", err)
+	}
+	password := strings.TrimSpace(string(passwordBytes))
+	fmt.Println() // Add newline after password input
 
 	encryptedMnemonic := utils.Encrypt(mnemonic, password)
 	encryptedBirthdate := utils.Encrypt(birthdate.Format(timeFormat), password)

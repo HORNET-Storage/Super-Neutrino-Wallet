@@ -37,19 +37,17 @@ func setDefaults() {
 	}
 
 	// Set defaults for development and production environments
-	if env == "development" {
-		viper.SetDefault("relay_backend_url", "http://localhost:9002")
-		viper.SetDefault("allowed_origin", "http://localhost:3000")
-		viper.SetDefault("wallet_db_path", "./dev_wallet.db")
+	switch env {
+	case "development":
 		viper.SetDefault("log_level", "debug")
-	} else if env == "production" {
-		viper.SetDefault("relay_backend_url", "https://my-production-backend.com")
-		viper.SetDefault("allowed_origin", "https://my-production-site.com")
-		viper.SetDefault("wallet_db_path", "/var/lib/bitcoin-wallet/wallet.db")
+	case "production":
 		viper.SetDefault("log_level", "info")
 	}
 
 	// Common defaults for both environments
+	viper.SetDefault("relay_backend_url", "http://localhost:9002")
+	viper.SetDefault("allowed_origin", "http://localhost:9002")
+	viper.SetDefault("wallet_db_path", "./dev_wallet.db")
 	viper.SetDefault("user_pubkey", "")
 	viper.SetDefault("network", "mainnet") // or "testnet" or "regtest"
 	viper.SetDefault("wallet_name", "")
