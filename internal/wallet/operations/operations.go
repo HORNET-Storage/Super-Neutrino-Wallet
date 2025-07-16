@@ -14,6 +14,7 @@ import (
 	walletstatedb "github.com/Maphikza/btc-wallet-btcsuite.git/internal/database"
 	"github.com/Maphikza/btc-wallet-btcsuite.git/internal/wallet/utils"
 	"github.com/joho/godotenv"
+	"golang.org/x/term"
 )
 
 var (
@@ -105,9 +106,12 @@ func ViewSeedPhrase() error {
 	}
 
 	fmt.Print("Enter your wallet password: ")
-	reader := bufio.NewReader(os.Stdin)
-	password, _ := reader.ReadString('\n')
-	password = strings.TrimSpace(password)
+	passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return fmt.Errorf("error reading password: %v", err)
+	}
+	password := strings.TrimSpace(string(passwordBytes))
+	fmt.Println() // Add newline after password input
 
 	seedPhrase, err := utils.Decrypt(encryptedSeedPhrase, password)
 	if err != nil {
